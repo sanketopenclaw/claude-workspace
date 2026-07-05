@@ -106,3 +106,136 @@ def test_struct_sizes_match_official_spec():
     assert packets.LAP_DATA_SIZE == 57
     assert packets.CAR_STATUS_SIZE == 59
     assert packets.CAR_DAMAGE_SIZE == 46
+
+
+def _pack_spec(spec, values):
+    fmt = "<" + "".join(type_char for _, type_char in spec)
+    return struct.pack(fmt, *(values[name] for name, _ in spec))
+
+
+def _build_car_motion_car(**overrides):
+    values = {
+        "world_position_x": 100.0, "world_position_y": 0.0, "world_position_z": 200.0,
+        "world_velocity_x": 10.0, "world_velocity_y": 0.0, "world_velocity_z": 5.0,
+        "world_forward_dir_x": 0, "world_forward_dir_y": 0, "world_forward_dir_z": 0,
+        "world_right_dir_x": 0, "world_right_dir_y": 0, "world_right_dir_z": 0,
+        "g_force_lateral": 0, "g_force_longitudinal": 0, "g_force_vertical": 0,
+        "yaw": 0.0, "pitch": 0.0, "roll": 0.0,
+    }
+    values.update(overrides)
+    return _pack_spec(packets.CAR_MOTION_SPEC, values)
+
+
+def test_parse_motion_packet_extracts_all_cars():
+    header = _build_header(packet_id=0, player_car_index=1)
+    cars = [_build_car_motion_car() for _ in range(packets.NUM_CARS)]
+    cars[1] = _build_car_motion_car(world_position_x=555.0, world_velocity_z=42.0)
+    data = header + b"".join(cars)
+
+    motion = packets.parse_motion_packet(data)
+
+    assert len(motion) == packets.NUM_CARS
+    assert motion[1]["world_position_x"] == 555.0
+    assert motion[1]["world_velocity_z"] == 42.0
+
+
+def _build_marshal_zone(zone_start=0.0, zone_flag=0):
+    return _pack_spec(packets.MARSHAL_ZONE_SPEC, {"zone_start": zone_start, "zone_flag": zone_flag})
+
+
+def _build_weather_forecast_sample(time_offset=0, weather=0, rain_percentage=0):
+    values = {
+        "session_type": 1, "time_offset": time_offset, "weather": weather,
+        "track_temperature": 30, "track_temperature_change": 0,
+        "air_temperature": 20, "air_temperature_change": 0,
+        "rain_percentage": rain_percentage,
+    }
+    return _pack_spec(packets.WEATHER_FORECAST_SAMPLE_SPEC, values)
+
+
+def _build_aero_zone(zone_start=0.0, zone_end=0.0):
+    return _pack_spec(packets.AERO_ZONE_SPEC, {"zone_start": zone_start, "zone_end": zone_end})
+
+
+def _build_session_packet(weather=2, safety_car_status=0, track_temperature=34, air_temperature=22,
+                           forecast_samples=((0, 2, 10), (15, 3, 60))):
+    head1 = {
+        "weather": weather, "track_temperature": track_temperature, "air_temperature": air_temperature,
+        "total_laps": 50, "track_length": 5000, "session_type": 10,
+        "track_id": 0, "formula": 0, "session_time_left": 3000,
+        "session_duration": 3600, "pit_speed_limit": 80, "game_paused": 0,
+        "is_spectating": 0, "spectator_car_index": 255,
+        "sli_pro_native_support": 0, "num_marshal_zones": 2,
+    }
+    data = _pack_spec(packets.SESSION_HEAD1_SPEC, head1)
+    data += b"".join(_build_marshal_zone(zone_start=i / 21) for i in range(packets.NUM_MARSHAL_ZONES))
+
+    head2 = {"safety_car_status": safety_car_status, "network_game": 0,
+             "num_weather_forecast_samples": len(forecast_samples)}
+    data += _pack_spec(packets.SESSION_HEAD2_SPEC, head2)
+    samples = [_build_weather_forecast_sample(*s) for s in forecast_samples]
+    samples += [_build_weather_forecast_sample()] * (packets.NUM_WEATHER_FORECAST_SAMPLES - len(samples))
+    data += b"".join(samples)
+
+    head3 = {name: 0 for name, _ in packets.SESSION_HEAD3_SPEC}
+    head3["num_sessions_in_weekend"] = 1
+    data += _pack_spec(packets.SESSION_HEAD3_SPEC, head3)
+    data += struct.pack(f"<{packets.NUM_WEEKEND_STRUCTURE}B", *([0] * packets.NUM_WEEKEND_STRUCTURE))
+
+    data += _pack_spec(packets.SESSION_TAIL1_SPEC, {"sector2_lap_distance_start": 0.0, "sector3_lap_distance_start": 0.0})
+    data += struct.pack("<B", 0)  # active_aero_track_status
+    data += struct.pack("<B", 1)  # num_active_aero_zones_full
+    data += b"".join(_build_aero_zone() for _ in range(packets.NUM_ACTIVE_AERO_ZONES))
+    data += struct.pack("<B", 1)  # num_active_aero_zones_partial
+    data += b"".join(_build_aero_zone() for _ in range(packets.NUM_ACTIVE_AERO_ZONES))
+    data += struct.pack("<B", 1)  # num_drs_zones
+    data += b"".join(_build_aero_zone() for _ in range(packets.NUM_DRS_ZONES))
+    data += _pack_spec(packets.SESSION_TAIL2_SPEC, {name: 0 for name, _ in packets.SESSION_TAIL2_SPEC})
+
+    return data
+
+
+def test_parse_session_packet_extracts_weather_and_trims_arrays():
+    header = _build_header(packet_id=1)
+    data = header + _build_session_packet()
+
+    session = packets.parse_session_packet(data)
+
+    assert session["weather"] == 2
+    assert session["track_temperature"] == 34
+    assert session["air_temperature"] == 22
+    assert session["safety_car_status"] == 0
+    assert len(session["marshal_zones"]) == 2
+    assert len(session["weather_forecast_samples"]) == 2
+    assert session["weather_forecast_samples"][1]["weather"] == 3
+    assert session["weather_forecast_samples"][1]["rain_percentage"] == 60
+    assert len(session["active_aero_zones_full"]) == 1
+    assert len(session["active_aero_zones_partial"]) == 1
+    assert len(session["drs_zones"]) == 1
+
+
+def test_parse_event_packet_penalty_variant():
+    header = _build_header(packet_id=3)
+    payload = _pack_spec(packets.EVENT_DETAIL_SPECS["PENA"], {
+        "penalty_type": 1, "infringement_type": 2, "vehicle_idx": 3,
+        "other_vehicle_idx": 255, "time": 5, "lap_num": 4, "places_gained": 0,
+    })
+    data = header + b"PENA" + payload
+
+    event_code, details = packets.parse_event_packet(data)
+
+    assert event_code == "PENA"
+    assert details == {
+        "penalty_type": 1, "infringement_type": 2, "vehicle_idx": 3,
+        "other_vehicle_idx": 255, "time": 5, "lap_num": 4, "places_gained": 0,
+    }
+
+
+def test_parse_event_packet_no_payload_code_returns_none_details():
+    header = _build_header(packet_id=3)
+    data = header + b"CHQF" + b"\x00" * 12
+
+    event_code, details = packets.parse_event_packet(data)
+
+    assert event_code == "CHQF"
+    assert details is None

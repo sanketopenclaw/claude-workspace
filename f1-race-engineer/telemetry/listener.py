@@ -3,7 +3,9 @@ import struct
 import time
 from telemetry import packets
 
+PACKET_ID_SESSION = 1
 PACKET_ID_LAP_DATA = 2
+PACKET_ID_EVENT = 3
 PACKET_ID_CAR_STATUS = 7
 PACKET_ID_CAR_DAMAGE = 10
 
@@ -57,5 +59,11 @@ class TelemetryListener:
             elif packet_id == PACKET_ID_CAR_DAMAGE:
                 tyres_wear = packets.parse_car_damage_packet(data, player_car_index)
                 self.state_tracker.update_car_damage(tyres_wear)
-        except (struct.error, IndexError) as e:
+            elif packet_id == PACKET_ID_SESSION:
+                session = packets.parse_session_packet(data)
+                self.state_tracker.update_session(session)
+            elif packet_id == PACKET_ID_EVENT:
+                event_code, details = packets.parse_event_packet(data)
+                self.state_tracker.update_event(event_code, details)
+        except (struct.error, IndexError, UnicodeDecodeError) as e:
             print(f"[telemetry] malformed packet ignored: {e}")

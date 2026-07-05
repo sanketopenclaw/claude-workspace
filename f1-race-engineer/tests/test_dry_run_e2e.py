@@ -5,7 +5,10 @@ from rules.engine import RuleEngine
 from dashboard.log import EngineerLog
 from dashboard.server import create_app
 from voice import phrasing
-from tests.test_packets import _build_header, _build_lap_data_car, _build_car_status_car, _build_car_damage_car
+from tests.test_packets import (
+    _build_header, _build_lap_data_car, _build_car_status_car, _build_car_damage_car,
+    _build_session_packet, _pack_spec,
+)
 
 PLAYER_INDEX = 0
 
@@ -31,6 +34,20 @@ def _car_damage_packet():
     return header + b"".join(cars)
 
 
+def _session_packet():
+    header = _build_header(packet_id=1, player_car_index=PLAYER_INDEX)
+    return header + _build_session_packet(weather=4, safety_car_status=2)
+
+
+def _penalty_event_packet():
+    header = _build_header(packet_id=3, player_car_index=PLAYER_INDEX)
+    payload = _pack_spec(packets.EVENT_DETAIL_SPECS["PENA"], {
+        "penalty_type": 1, "infringement_type": 2, "vehicle_idx": 0,
+        "other_vehicle_idx": 3, "time": 5, "lap_num": 5, "places_gained": 0,
+    })
+    return header + b"PENA" + payload
+
+
 def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     monkeypatch.setattr(phrasing, "PROVIDER_CHAIN", [])  # force canned lines, no real API calls
 
@@ -42,8 +59,15 @@ def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     listener._dispatch(_lap_data_packet())
     listener._dispatch(_car_status_packet())
     listener._dispatch(_car_damage_packet())
+    listener._dispatch(_session_packet())
+    listener._dispatch(_penalty_event_packet())
 
     state = state_tracker.snapshot()
+    assert state.weather == 4
+    assert state.safety_car_status == 2
+    assert state.last_penalty["vehicle_idx"] == 0
+    assert state.last_penalty["other_vehicle_idx"] == 3
+
     events = rule_engine.check_tyre_and_fuel(state) + rule_engine.check_gaps(state)
     kinds = {e.kind for e in events}
     assert kinds == {"tyre_wear", "fuel_critical", "gap_closing_ahead", "gap_closing_behind"}

@@ -16,6 +16,16 @@ class State:
     fuel_in_tank: float = 0.0
     fuel_remaining_laps: float = 0.0
     tyres_wear: list = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0])
+    weather: int = None
+    track_temperature: int = None
+    air_temperature: int = None
+    safety_car_status: int = None
+    weather_forecast: list = dataclasses.field(default_factory=list)
+    last_penalty: dict = None
+    safety_car_event: dict = None
+    last_collision: dict = None
+    last_overtake: dict = None
+    last_retirement: dict = None
 
 
 class StateTracker:
@@ -46,6 +56,41 @@ class StateTracker:
         with self._lock:
             self._state.tyres_wear = list(tyres_wear)
 
+    def update_session(self, session):
+        with self._lock:
+            s = self._state
+            s.weather = session["weather"]
+            s.track_temperature = session["track_temperature"]
+            s.air_temperature = session["air_temperature"]
+            s.safety_car_status = session["safety_car_status"]
+            s.weather_forecast = [
+                {
+                    "time_offset": sample["time_offset"],
+                    "weather": sample["weather"],
+                    "rain_percentage": sample["rain_percentage"],
+                }
+                for sample in session["weather_forecast_samples"]
+            ]
+
+    _EVENT_STATE_FIELD = {
+        "PENA": "last_penalty",
+        "SCAR": "safety_car_event",
+        "COLL": "last_collision",
+        "OVTK": "last_overtake",
+        "RTMT": "last_retirement",
+    }
+
+    def update_event(self, event_code, details):
+        field = self._EVENT_STATE_FIELD.get(event_code)
+        if field is None:
+            return
+        with self._lock:
+            setattr(self._state, field, details)
+
     def snapshot(self):
         with self._lock:
-            return dataclasses.replace(self._state, tyres_wear=list(self._state.tyres_wear))
+            return dataclasses.replace(
+                self._state,
+                tyres_wear=list(self._state.tyres_wear),
+                weather_forecast=list(self._state.weather_forecast),
+            )
