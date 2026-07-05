@@ -40,7 +40,7 @@ def test_parse_lap_data_packet_extracts_player_car_and_gaps():
     header = _build_header(packet_id=2, player_car_index=1)
     car_p2_behind_player = _build_lap_data_car(car_position=2, delta_front_ms=750)
     car_player = _build_lap_data_car(car_position=1, delta_front_ms=0)
-    filler_cars = [_build_lap_data_car(car_position=p) for p in range(3, 23)]
+    filler_cars = [_build_lap_data_car(car_position=p) for p in range(3, 25)]
     cars = [car_p2_behind_player, car_player] + filler_cars
     data = header + b"".join(cars) + b"\xff\xff"
 
@@ -63,7 +63,7 @@ def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3):
         0,
         500.0, 300.0, 4000000.0,
         0,
-        100.0, 50.0, 150.0,
+        100.0, 50.0, 150.0, 200.0,
         0,
     )
 
@@ -94,3 +94,15 @@ def test_parse_car_damage_packet_extracts_tyre_wear_for_player_car():
     tyres_wear = packets.parse_car_damage_packet(data, player_car_index=5)
 
     assert tyres_wear == [40.0, 42.0, 38.0, 39.0]
+
+
+def test_struct_sizes_match_official_spec():
+    # Pins byte sizes against P403n1x87/f1-packets data/spec.h ("F1 25: 2026 Season
+    # Pack" UDP spec) so a future season-pack field/grid-size change fails loud
+    # here instead of silently corrupting offsets (see CAR_STATUS_FORMAT fix:
+    # missing m_ersDeployedThisLap float made every non-zero player_car_index
+    # read fuel/tyre data from the wrong byte offset).
+    assert packets.NUM_CARS == 24
+    assert packets.LAP_DATA_SIZE == 57
+    assert packets.CAR_STATUS_SIZE == 59
+    assert packets.CAR_DAMAGE_SIZE == 46

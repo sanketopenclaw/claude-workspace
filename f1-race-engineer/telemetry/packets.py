@@ -1,7 +1,7 @@
 import struct
 
-# F1 25 UDP telemetry — struct formats verified against MacManley/f1-25-udp
-# (github.com/MacManley/f1-25-udp), matching the official F1 25 spec.
+# F1 25 UDP telemetry — struct formats verified against the official EA spec
+# (P403n1x87/f1-packets data/spec.h, "F1 25: 2026 Season Pack" UDP specification).
 
 HEADER_FORMAT = "<HBBBBBQfIIBB"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # 29 bytes
@@ -21,7 +21,7 @@ def parse_header(data):
 
 LAP_DATA_FORMAT = "<IIHBHBHBHBfffBBBBBBBBBBBBBBBHHBfB"
 LAP_DATA_SIZE = struct.calcsize(LAP_DATA_FORMAT)  # 57 bytes
-NUM_CARS = 22
+NUM_CARS = 24
 
 
 def _combine_delta(ms_part, minutes_part):
@@ -58,8 +58,8 @@ def parse_lap_data_packet(data, player_car_index):
     return my_lap, gap_ahead_ms, gap_behind_ms
 
 
-CAR_STATUS_FORMAT = "<BBBBBfffHHBBHBBBbfffBfffB"
-CAR_STATUS_SIZE = struct.calcsize(CAR_STATUS_FORMAT)  # 55 bytes
+CAR_STATUS_FORMAT = "<BBBBBfffHHBBHBBBbfffBffffB"
+CAR_STATUS_SIZE = struct.calcsize(CAR_STATUS_FORMAT)  # 59 bytes
 
 
 def parse_car_status_packet(data, player_car_index):

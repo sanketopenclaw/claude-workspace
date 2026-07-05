@@ -13,7 +13,7 @@ PLAYER_INDEX = 0
 def _lap_data_packet():
     player = _build_lap_data_car(car_position=3, current_lap_num=5, delta_front_ms=800)
     behind = _build_lap_data_car(car_position=4, delta_front_ms=600)
-    fillers = [_build_lap_data_car(car_position=p) for p in range(5, 25)]
+    fillers = [_build_lap_data_car(car_position=p) for p in range(5, 27)]
     cars = [player, behind] + fillers
     header = _build_header(packet_id=2, player_car_index=PLAYER_INDEX)
     return header + b"".join(cars) + b"\xff\xff"
@@ -21,13 +21,13 @@ def _lap_data_packet():
 
 def _car_status_packet():
     header = _build_header(packet_id=7, player_car_index=PLAYER_INDEX)
-    cars = [_build_car_status_car(fuel_in_tank=3.0, fuel_remaining_laps=1.5) for _ in range(22)]
+    cars = [_build_car_status_car(fuel_in_tank=3.0, fuel_remaining_laps=1.5) for _ in range(24)]
     return header + b"".join(cars)
 
 
 def _car_damage_packet():
     header = _build_header(packet_id=10, player_car_index=PLAYER_INDEX)
-    cars = [_build_car_damage_car(tyres_wear=(72.0, 70.0, 68.0, 69.0)) for _ in range(22)]
+    cars = [_build_car_damage_car(tyres_wear=(72.0, 70.0, 68.0, 69.0)) for _ in range(24)]
     return header + b"".join(cars)
 
 
