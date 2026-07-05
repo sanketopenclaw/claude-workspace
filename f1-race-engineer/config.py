@@ -5,6 +5,8 @@ OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MISTRAL_MODEL = "mistral-small-latest"
 MISTRAL_BASE_URL = "https://api.mistral.ai/v1"
+NVIDIA_MODEL = "meta/llama-3.1-405b-instruct"
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 UDP_LISTEN_IP = "0.0.0.0"
 UDP_LISTEN_PORT = 20777
 TTS_VOICE = "en-GB-RyanNeural"
@@ -30,4 +32,11 @@ def get_mistral_api_key():
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         raise RuntimeError("MISTRAL_API_KEY environment variable not set")
+    return key
+
+
+def get_nvidia_api_key():
+    key = os.environ.get("NVIDIA_API_KEY")
+    if not key:
+        raise RuntimeError("NVIDIA_API_KEY environment variable not set")
     return key
