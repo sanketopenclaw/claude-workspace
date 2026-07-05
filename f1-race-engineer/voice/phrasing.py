@@ -41,6 +41,22 @@ COMPONENT_DISPLAY_NAMES = {
     "drs_fault": "DRS", "ers_fault": "ERS", "engine_blown": "engine", "engine_seized": "engine",
 }
 
+PERSONALITY_PROMPTS = {
+    "calm": "You are a calm, measured F1 race engineer speaking on team radio.",
+    "intense": "You are an intense, fired-up F1 race engineer speaking on team radio, urgently pushing your driver.",
+}
+
+# Real driver query vocabulary (adapted from Crew Chief's phrasing patterns) - helps
+# the LLM answer in the register drivers actually use, not a generic Q&A tone.
+QA_EXAMPLE_PHRASINGS = (
+    '"what position am I in", "gap to car number X", "how much fuel to the end", '
+    '"what are my tyres like", "do I need to pit"'
+)
+
+
+def _personality_prompt():
+    return PERSONALITY_PROMPTS.get(config.VOICE_PERSONALITY, PERSONALITY_PROMPTS["calm"])
+
 
 def _canned_line(event):
     data = dict(event.data)
@@ -117,7 +133,7 @@ def _call_llm(prompt, max_tokens, provider_chain=None):
 
 def event_to_line(event):
     prompt = (
-        "You are a terse F1 race engineer speaking on team radio. "
+        f"{_personality_prompt()} "
         f"React to this event in ONE short sentence, no filler: {event.kind} with data {event.data}."
     )
     result = _call_llm(prompt, max_tokens=60)
@@ -132,7 +148,8 @@ def answer_question(question, state):
         f"gap ahead {state.gap_ahead_ms}ms, gap behind {state.gap_behind_ms}ms."
     )
     prompt = (
-        f"You are a terse F1 race engineer on team radio. {context}\n"
+        f"{_personality_prompt()} {context}\n"
+        f"Drivers typically ask things like {QA_EXAMPLE_PHRASINGS}.\n"
         f'Driver asks: "{question}"\nAnswer in one or two short sentences.'
     )
     result = _call_llm(prompt, max_tokens=100)

@@ -1,53 +1,84 @@
 # F1 Race Engineer — Feature Backlog
 
-Not built yet. Phase 1 (core telemetry + voice callouts + dashboard shell) comes first — see `docs/superpowers/plans/2026-07-05-f1-race-engineer-phase1.md`. Each item below needs its own brainstorm → spec → plan before implementation, same as Phase 1 did.
+Phase 1 (core telemetry + voice callouts + dashboard shell) is done — see
+`docs/superpowers/plans/2026-07-05-f1-race-engineer-phase1.md`. Phase 2 groups
+1-6 below are also built (design: `docs/superpowers/specs/2026-07-05-f1-race-engineer-phase2-design.md`,
+full history in `.superpowers/sdd/progress.md`). Status noted inline; anything
+not marked done is still just an idea.
 
 ## Strategy / pit
 
-- Undercut/overcut pit-window calculator
-- ERS deploy/harvest mode advice
-- Fuel mix suggestions (rich/lean target per lap)
-- **Live fuel-per-lap recalculation** — continuously re-estimate fuel needed based on actual burn rate this stint (not just a fixed threshold like Phase 1's `fuel_remaining_laps < 2`), tell exact fuel needed before next pit. (Crew Chief does this.)
-- "What if I box now" voice-triggered scenario sim
+- [x] Undercut/overcut pit-window calculator — uses the game's own
+  `pit_stop_window_ideal_lap`/`latest_lap` (Session packet) rather than
+  reinventing strategy simulation
+- [x] ERS deploy/harvest mode advice (`check_ers`)
+- [x] Fuel mix suggestions (`fuel_mix_advice`, fires alongside a fuel deficit)
+- [x] **Live fuel-per-lap recalculation** (`check_fuel_strategy` — rolling
+  3-lap burn-rate average, replaces the fixed threshold)
+- [ ] "What if I box now" voice-triggered scenario sim — not built
 
 ## Safety / awareness
 
-- Track-limit/corner-cutting live warning (PenaltyIssued event)
-- Yellow/red/VSC/safety-car callouts
-- Weather forecast callout ("rain in 3 min, box for inters") — needs Session-packet parsing
-- **Damage-triggered reactive callout** — detect a contact/heavy kerb hit via telemetry delta and immediately report what broke, not just a standing damage % readout. (Crew Chief does this.)
-- **Incident/contact warnings for nearby cars** — relevant in races with AI, not time trial.
-- **Overtake/defend spotter calls** — "car alongside on your left," "clear to move" — wheel-to-wheel awareness, adapted from Crew Chief's oval-racing spotter concept for F1 road-racing context.
+- [x] Track-limit/corner-cutting live warning (`check_penalty`, PENA event)
+- [x] Yellow/red/VSC/safety-car callouts (`check_flag`, `check_safety_car`)
+- [x] Weather forecast callout (`check_weather_forecast`)
+- [x] **Damage-triggered reactive callout** (`check_damage_delta` — compares
+  CarDamageData components tick-over-tick)
+- [x] **Incident/contact warnings** (`check_collision`, player-involvement filtered)
+- [ ] **Overtake/defend spotter calls** ("car alongside," "clear to move") —
+  not built; `check_overtake` covers the after-the-fact "you passed/were
+  passed" case from the OVTK event, not live wheel-to-wheel proximity calls
+  (would need Motion-based relative-position tracking between cars, not just
+  the player)
 
 ## Coaching
 
-- Braking-point/racing-line coaching vs personal-best ghost (Motion packet)
-- Post-session debrief report (lap consistency, sector compare, tyre wear curve)
-- Speed-trap/sector leaderboard vs field best
+- [x] Braking-point/racing-line coaching vs personal-best ghost
+  (`check_coaching` — **simplified**: compares player speed at 100m lap-distance
+  buckets against the session-best lap's speed at the same buckets, not a full
+  spatial trajectory replay with braking points/racing line)
+- [x] Post-session debrief report (`check_debrief` — **simplified**: one spoken
+  summary line at session end, not a full dashboard report page)
+- [x] Speed-trap callouts (`check_speed_trap` — personal/overall best from the
+  SPTP event; **not built**: a full sortable sector leaderboard vs field best)
 
 ## Setup (Phase 3)
 
-- Driving-style profiler + track-aware setup recommender
-- Multi-track setup library (save/reuse good setups per track)
+- [ ] Driving-style profiler + track-aware setup recommender
+- [ ] Multi-track setup library (save/reuse good setups per track)
 
 ## Race awareness
 
-- Rival behavior notes (teammate pit, retirements, DRS trains)
-- Qualy gap-to-pole live countdown
-- **Relative/leaderboard widget** — dashboard strip showing nearby cars' names + live gaps in one view. (SimHub does this.)
+- [x] Rival behavior notes — **simplified to retirements only**
+  (`check_retirement`); teammate-pit detection and DRS-train detection not
+  built (would need m_myTeam cross-referencing and historical position
+  tracking respectively)
+- [x] Qualy gap-to-pole live countdown (`check_lap_completion`'s
+  `gap_to_leader`/`provisional_pole`, gated to qualifying session types)
+- [x] **Relative/leaderboard widget** — dashboard panel, position-sorted,
+  driver names via Participants packet
 
 ## Voice UX
 
-- Custom "hey engineer" wake-word (replace hey_jarvis)
-- Radio-static audio effect for immersion
-- Voice personality picker (calm vs intense)
-- **Design Q&A prompt examples around common real phrasings** — "what position am I in," "gap to car number X," "how much fuel to the end" — Crew Chief's actual query vocabulary is a good reference for what drivers naturally ask.
-- Multi-language voice support
+- [ ] Custom "hey engineer" wake-word — **infra supports swapping
+  `config.WAKE_WORD_NAME`, but a real custom wake-word needs recorded audio
+  samples run through openWakeWord's training notebook to produce a `.onnx`
+  model. Can't be fabricated without that data/training pass** — still on
+  `hey_jarvis` (one of openWakeWord's pretrained models)
+- [x] Radio-static audio effect (`voice/tts.py` — synthesized white-noise
+  burst via numpy, no external asset needed)
+- [x] Voice personality picker (calm vs intense — affects both the LLM prompt
+  tone and the TTS voice used)
+- [x] **Q&A prompt examples** — real driver query vocabulary added to
+  `answer_question`'s prompt
+- [ ] Multi-language voice support — not built (would need translated canned
+  lines for every event kind plus non-English STT/TTS voice selection; too
+  large to build speculatively without a specific language requirement)
 
 ## Dashboard
 
-- Session history DB — browse past races in dashboard
-- **Halo HUD overlay style** — minimal in-cockpit overlay option (numbers over the game view) as an alternative to the full second-screen dashboard, for setups without a spare monitor. (SimHub offers this as a display mode.)
+- [ ] Session history DB — browse past races in dashboard
+- [ ] **Halo HUD overlay style** — minimal in-cockpit overlay option
 
 ---
 

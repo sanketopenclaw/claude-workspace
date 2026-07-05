@@ -10,8 +10,21 @@ NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 UDP_LISTEN_IP = "0.0.0.0"
 UDP_LISTEN_PORT = 20777
 TTS_VOICE = "en-GB-RyanNeural"
+# openWakeWord ships hey_jarvis/alexa/hey_mycroft as pretrained models. A genuinely
+# custom "hey engineer" wake-word needs real recorded samples run through
+# openWakeWord's training notebook (github.com/dscripka/openWakeWord) to produce a
+# .onnx model - can't be fabricated without that data/training pass. Swap
+# WAKE_WORD_NAME to any pretrained model name, or point it at a custom .onnx path
+# once trained.
 WAKE_WORD_NAME = "hey_jarvis"
 WHISPER_MODEL_SIZE = "base.en"
+
+VOICE_PERSONALITY = "calm"  # "calm" or "intense"
+PERSONALITY_TTS_VOICES = {
+    "calm": "en-GB-RyanNeural",
+    "intense": "en-US-GuyNeural",
+}
+RADIO_STATIC_ENABLED = True
 
 
 def get_cerebras_api_key():

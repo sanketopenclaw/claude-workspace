@@ -88,3 +88,36 @@ def test_answer_question_falls_back_to_canned_line_when_all_providers_fail(monke
     result = phrasing.answer_question("how's fuel?", state)
 
     assert result == "Radio's breaking up, say again."
+
+
+def test_personality_prompt_defaults_to_calm(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "VOICE_PERSONALITY", "calm")
+    assert phrasing._personality_prompt() == phrasing.PERSONALITY_PROMPTS["calm"]
+
+
+def test_personality_prompt_switches_to_intense(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "VOICE_PERSONALITY", "intense")
+    assert phrasing._personality_prompt() == phrasing.PERSONALITY_PROMPTS["intense"]
+
+
+def test_personality_prompt_falls_back_to_calm_for_unknown_value(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "VOICE_PERSONALITY", "nonexistent")
+    assert phrasing._personality_prompt() == phrasing.PERSONALITY_PROMPTS["calm"]
+
+
+def test_event_to_line_prompt_uses_configured_personality(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "VOICE_PERSONALITY", "intense")
+    captured = {}
+
+    def fake_llm(prompt, max_tokens):
+        captured["prompt"] = prompt
+        return "line"
+
+    monkeypatch.setattr(phrasing, "_call_llm", fake_llm)
+    phrasing.event_to_line(Event("tyre_wear", {"threshold": 30, "remaining_pct": 28.0}))
+
+    assert phrasing.PERSONALITY_PROMPTS["intense"] in captured["prompt"]
