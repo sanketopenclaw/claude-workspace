@@ -105,6 +105,15 @@ def test_fuel_critical_fires_once_when_below_two_laps():
     assert events_low_second == []
 
 
+def test_fuel_critical_does_not_false_fire_on_default_state_before_first_packet():
+    engine = RuleEngine()
+    startup_state = State()  # fuel_remaining_laps defaults to 0.0, tyres_wear to [0,0,0,0]
+
+    events = engine.check_tyre_and_fuel(startup_state)
+
+    assert events == []
+
+
 def test_gap_closing_fires_once_per_lap_per_direction():
     engine = RuleEngine()
     close_ahead = State(current_lap_num=1, gap_ahead_ms=800, gap_behind_ms=5000)
@@ -511,9 +520,10 @@ def test_check_setup_recommendation_silent_without_lookup_fn():
 
 def test_check_tyre_wear_imbalance_detects_front_and_rear():
     engine = RuleEngine()
+    # tyres_wear order is [RL, RR, FL, FR] per the official EA spec note.
     balanced = State(tyres_wear=[20.0, 20.0, 20.0, 20.0])
-    front_worn = State(tyres_wear=[40.0, 42.0, 20.0, 20.0])  # front avg 41, rear avg 20, diff 21
-    rear_worn = State(tyres_wear=[20.0, 20.0, 42.0, 40.0])  # rear avg 41, front avg 20, diff -21
+    front_worn = State(tyres_wear=[20.0, 20.0, 40.0, 42.0])  # front avg 41, rear avg 20, diff 21
+    rear_worn = State(tyres_wear=[42.0, 40.0, 20.0, 20.0])  # rear avg 41, front avg 20, diff -21
 
     assert engine.check_tyre_wear_imbalance(balanced) == []
     events_front = engine.check_tyre_wear_imbalance(front_worn)

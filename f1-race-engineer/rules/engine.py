@@ -108,7 +108,10 @@ class RuleEngine:
                 events.append(Event("tyre_wear", {"threshold": threshold, "remaining_pct": remaining_pct}))
                 self._fired_tyre_thresholds.add(threshold)
 
-        if state.fuel_remaining_laps < 2 and not self._fired_fuel_warning:
+        # fuel_remaining_laps defaults to 0.0 before any CarStatus packet has
+        # arrived (State's sentinel, not "genuinely out of fuel") - excluding
+        # exactly 0 avoids firing a false fuel_critical at every app startup.
+        if 0 < state.fuel_remaining_laps < 2 and not self._fired_fuel_warning:
             events.append(Event("fuel_critical", {"fuel_remaining_laps": state.fuel_remaining_laps}))
             self._fired_fuel_warning = True
         elif state.fuel_remaining_laps >= 2:
@@ -364,8 +367,11 @@ class RuleEngine:
         events = []
         if not state.tyres_wear or len(state.tyres_wear) < 4:
             return events
-        front_avg = (state.tyres_wear[0] + state.tyres_wear[1]) / 2
-        rear_avg = (state.tyres_wear[2] + state.tyres_wear[3]) / 2
+        # Wheel arrays are always ordered RL, RR, FL, FR (official EA spec note,
+        # confirmed via MotionEx's m_suspensionPosition comment - applies to
+        # every 4-element wheel array in the API, not just that one struct).
+        rear_avg = (state.tyres_wear[0] + state.tyres_wear[1]) / 2
+        front_avg = (state.tyres_wear[2] + state.tyres_wear[3]) / 2
         diff = front_avg - rear_avg
         if diff >= TYRE_IMBALANCE_THRESHOLD:
             direction = "front"

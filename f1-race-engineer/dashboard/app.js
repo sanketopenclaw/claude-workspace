@@ -100,7 +100,10 @@ async function poll() {
   document.getElementById("gapBehind").textContent = fmtGap(data.gap_behind_ms);
 
   const wear = data.tyres_wear || [0, 0, 0, 0];
-  const wheelIds = ["tyreFL", "tyreFR", "tyreRL", "tyreRR"];
+  // Wheel arrays are always ordered RL, RR, FL, FR (official EA spec note) - not
+  // the visually-intuitive FL, FR, RL, RR. This array's order must match that,
+  // not the on-screen tile layout below.
+  const wheelIds = ["tyreRL", "tyreRR", "tyreFL", "tyreFR"];
   wheelIds.forEach((id, i) => {
     const el = document.getElementById(id);
     const life = Math.max(0, Math.round(100 - wear[i]));

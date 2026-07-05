@@ -123,8 +123,8 @@ def _unpack_array(spec, data, offset, count):
 
 
 # ---------------------------------------------------------------------------
-# Motion packet (id 0) — parser only; not wired into listener/state until a
-# feature actually consumes it (see docs/superpowers/specs/2026-07-05-f1-race-engineer-phase2-design.md)
+# Motion packet (id 0) — wired into listener/state (StateTracker.update_motion)
+# since Group 5, which added check_coaching as the first consumer of speed_kmh.
 # ---------------------------------------------------------------------------
 
 CAR_MOTION_SPEC = [
