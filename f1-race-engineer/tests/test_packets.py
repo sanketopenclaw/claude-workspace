@@ -52,7 +52,7 @@ def test_parse_lap_data_packet_extracts_player_car_and_gaps():
     assert gap_behind_ms == 750
 
 
-def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3):
+def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3, vehicle_fia_flags=0):
     return struct.pack(
         packets.CAR_STATUS_FORMAT,
         0, 0, 1, 50, 0,
@@ -60,7 +60,7 @@ def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3):
         15000, 4000,
         8, 1, 1500,
         16, 16, 5,
-        0,
+        vehicle_fia_flags,
         500.0, 300.0, 4000000.0,
         0,
         100.0, 50.0, 150.0, 200.0,
@@ -71,29 +71,35 @@ def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3):
 def test_parse_car_status_packet_extracts_fuel_for_player_car():
     header = _build_header(packet_id=7, player_car_index=2)
     cars = [_build_car_status_car() for _ in range(22)]
-    cars[2] = _build_car_status_car(fuel_in_tank=30.0, fuel_remaining_laps=3.0)
+    cars[2] = _build_car_status_car(fuel_in_tank=30.0, fuel_remaining_laps=3.0, vehicle_fia_flags=3)
     data = header + b"".join(cars)
 
-    fuel_in_tank, fuel_remaining_laps = packets.parse_car_status_packet(data, player_car_index=2)
+    fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags = packets.parse_car_status_packet(data, player_car_index=2)
 
     assert fuel_in_tank == 30.0
     assert fuel_remaining_laps == 3.0
+    assert vehicle_fia_flags == 3
 
 
-def _build_car_damage_car(tyres_wear=(10.0, 12.0, 8.0, 9.0)):
-    zeros_30 = (0,) * 30
-    return struct.pack(packets.CAR_DAMAGE_FORMAT, *tyres_wear, *zeros_30)
+def _build_car_damage_car(tyres_wear=(10.0, 12.0, 8.0, 9.0), **component_overrides):
+    zeros_12 = (0,) * 12  # tyres_damage/brakes_damage/tyre_blisters - unused, not modeled
+    components = {name: 0 for name in packets.CAR_DAMAGE_COMPONENT_NAMES}
+    components.update(component_overrides)
+    component_values = [components[name] for name in packets.CAR_DAMAGE_COMPONENT_NAMES]
+    return struct.pack(packets.CAR_DAMAGE_FORMAT, *tyres_wear, *zeros_12, *component_values)
 
 
 def test_parse_car_damage_packet_extracts_tyre_wear_for_player_car():
     header = _build_header(packet_id=10, player_car_index=5)
     cars = [_build_car_damage_car() for _ in range(22)]
-    cars[5] = _build_car_damage_car(tyres_wear=(40.0, 42.0, 38.0, 39.0))
+    cars[5] = _build_car_damage_car(tyres_wear=(40.0, 42.0, 38.0, 39.0), rear_wing=15)
     data = header + b"".join(cars)
 
-    tyres_wear = packets.parse_car_damage_packet(data, player_car_index=5)
+    tyres_wear, damage_components = packets.parse_car_damage_packet(data, player_car_index=5)
 
     assert tyres_wear == [40.0, 42.0, 38.0, 39.0]
+    assert damage_components["rear_wing"] == 15
+    assert damage_components["front_left_wing"] == 0
 
 
 def test_struct_sizes_match_official_spec():

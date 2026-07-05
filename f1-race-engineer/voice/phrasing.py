@@ -8,13 +8,41 @@ CANNED_LINES = {
     "fuel_critical": "Fuel critical, {fuel_remaining_laps:.1f} laps left, look after it.",
     "gap_closing_ahead": "Car ahead, gap closing, {gap_ms} milliseconds.",
     "gap_closing_behind": "Car behind closing, {gap_ms} milliseconds.",
+    "flag_change": "{flag_name} flag.",
+    "flag_clear": "Green flag, track clear.",
+    "safety_car": "Safety car {event_type_name}.",
+    "weather_forecast": "{weather_name} expected in {time_offset} minutes, {rain_percentage} percent chance of rain.",
+    "penalty": "Penalty, {time} seconds added.",
+    "collision": "Contact reported, check the car.",
+    "overtake_made": "Nice, place gained.",
+    "overtake_lost": "Position lost, car behind through.",
+    "damage_detected": "Contact! {component_name} damage, {delta:.0f} percent.",
+    "damage_fault": "Warning, {component_name} fault.",
+}
+
+FLAG_NAMES = {0: "no", 1: "green", 2: "blue", 3: "yellow"}
+SAFETY_CAR_EVENT_NAMES = {0: "deployed", 1: "returning to pits", 2: "returned", 3: "resuming race"}
+WEATHER_NAMES = {0: "clear", 1: "light cloud", 2: "overcast", 3: "light rain", 4: "heavy rain", 5: "storm"}
+COMPONENT_DISPLAY_NAMES = {
+    "front_left_wing": "front left wing", "front_right_wing": "front right wing", "rear_wing": "rear wing",
+    "floor": "floor", "diffuser": "diffuser", "sidepod": "sidepod", "gear_box": "gearbox", "engine": "engine",
+    "drs_fault": "DRS", "ers_fault": "ERS", "engine_blown": "engine", "engine_seized": "engine",
 }
 
 
 def _canned_line(event):
+    data = dict(event.data)
+    if event.kind == "flag_change":
+        data["flag_name"] = FLAG_NAMES.get(data.get("flag"), "flag")
+    elif event.kind == "safety_car":
+        data["event_type_name"] = SAFETY_CAR_EVENT_NAMES.get(data.get("event_type"), "status change")
+    elif event.kind == "weather_forecast":
+        data["weather_name"] = WEATHER_NAMES.get(data.get("weather"), "weather change")
+    elif event.kind in ("damage_detected", "damage_fault"):
+        data["component_name"] = COMPONENT_DISPLAY_NAMES.get(data.get("component"), "car")
     template = CANNED_LINES.get(event.kind, "Note: {kind}")
     try:
-        return template.format(kind=event.kind, **event.data)
+        return template.format(kind=event.kind, **data)
     except (KeyError, ValueError):
         return "Note: {}".format(event.kind)
 

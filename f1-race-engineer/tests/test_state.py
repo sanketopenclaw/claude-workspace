@@ -25,14 +25,23 @@ def test_update_lap_data_tracks_best_lap_time():
 
 def test_update_car_status_and_damage_populate_snapshot():
     tracker = StateTracker()
-    tracker.update_car_status(fuel_in_tank=25.0, fuel_remaining_laps=4.0)
-    tracker.update_car_damage(tyres_wear=[10.0, 11.0, 9.0, 12.0])
+    tracker.update_car_status(fuel_in_tank=25.0, fuel_remaining_laps=4.0, vehicle_fia_flags=3)
+    tracker.update_car_damage(tyres_wear=[10.0, 11.0, 9.0, 12.0], damage_components={"rear_wing": 5})
 
     snapshot = tracker.snapshot()
 
     assert snapshot.fuel_in_tank == 25.0
     assert snapshot.fuel_remaining_laps == 4.0
     assert snapshot.tyres_wear == [10.0, 11.0, 9.0, 12.0]
+    assert snapshot.flag_status == 3
+    assert snapshot.damage_components == {"rear_wing": 5}
+
+
+def test_update_player_car_index():
+    tracker = StateTracker()
+    tracker.update_player_car_index(4)
+
+    assert tracker.snapshot().player_car_index == 4
 
 
 def test_update_session_populates_weather_and_safety_car_snapshot():

@@ -32,6 +32,26 @@ def test_event_to_line_falls_back_to_canned_when_all_providers_fail(monkeypatch)
     assert result == "Tyres at 28 percent, box window opening."
 
 
+def test_canned_line_for_flag_change_uses_flag_name():
+    event = Event("flag_change", {"flag": 3})
+    assert phrasing._canned_line(event) == "yellow flag."
+
+
+def test_canned_line_for_safety_car_uses_event_type_name():
+    event = Event("safety_car", {"safety_car_type": 1, "event_type": 0})
+    assert phrasing._canned_line(event) == "Safety car deployed."
+
+
+def test_canned_line_for_weather_forecast_uses_weather_name():
+    event = Event("weather_forecast", {"time_offset": 5, "weather": 4, "rain_percentage": 70})
+    assert phrasing._canned_line(event) == "heavy rain expected in 5 minutes, 70 percent chance of rain."
+
+
+def test_canned_line_for_damage_detected_uses_component_name():
+    event = Event("damage_detected", {"component": "rear_wing", "delta": 20})
+    assert phrasing._canned_line(event) == "Contact! rear wing damage, 20 percent."
+
+
 def test_answer_question_falls_back_to_canned_line_when_all_providers_fail(monkeypatch):
     from telemetry.state import State
 

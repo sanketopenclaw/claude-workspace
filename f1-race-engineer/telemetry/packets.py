@@ -67,17 +67,26 @@ def parse_car_status_packet(data, player_car_index):
     f = struct.unpack_from(CAR_STATUS_FORMAT, data, offset)
     fuel_in_tank = f[5]
     fuel_remaining_laps = f[7]
-    return fuel_in_tank, fuel_remaining_laps
+    vehicle_fia_flags = f[16]
+    return fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags
 
 
 CAR_DAMAGE_FORMAT = "<4f4B4B4B18B"
 CAR_DAMAGE_SIZE = struct.calcsize(CAR_DAMAGE_FORMAT)  # 46 bytes
 
+CAR_DAMAGE_COMPONENT_NAMES = [
+    "front_left_wing", "front_right_wing", "rear_wing", "floor", "diffuser", "sidepod",
+    "drs_fault", "ers_fault", "gear_box", "engine", "engine_mguh_wear", "engine_es_wear",
+    "engine_ce_wear", "engine_ice_wear", "engine_mguk_wear", "engine_tc_wear", "engine_blown", "engine_seized",
+]
+
 
 def parse_car_damage_packet(data, player_car_index):
     offset = HEADER_SIZE + player_car_index * CAR_DAMAGE_SIZE
     f = struct.unpack_from(CAR_DAMAGE_FORMAT, data, offset)
-    return list(f[0:4])
+    tyres_wear = list(f[0:4])
+    components = dict(zip(CAR_DAMAGE_COMPONENT_NAMES, f[16:16 + len(CAR_DAMAGE_COMPONENT_NAMES)]))
+    return tyres_wear, components
 
 
 # ---------------------------------------------------------------------------

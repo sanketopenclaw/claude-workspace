@@ -106,3 +106,138 @@ def test_gap_closing_handles_none_values():
     events = engine.check_gaps(state_with_nones)
 
     assert events == []
+
+
+def test_check_flag_fires_on_change_to_yellow_and_back_to_green():
+    engine = RuleEngine()
+    green = State(flag_status=1)
+    yellow = State(flag_status=3)
+    still_yellow = State(flag_status=3)
+    back_to_green = State(flag_status=1)
+
+    assert engine.check_flag(green) == []  # first reading, no prior state to compare
+    events_yellow = engine.check_flag(yellow)
+    assert len(events_yellow) == 1
+    assert events_yellow[0].kind == "flag_change"
+    assert events_yellow[0].data["flag"] == 3
+    assert engine.check_flag(still_yellow) == []  # unchanged, no refire
+    events_clear = engine.check_flag(back_to_green)
+    assert len(events_clear) == 1
+    assert events_clear[0].kind == "flag_clear"
+
+
+def test_check_safety_car_fires_once_per_new_event():
+    engine = RuleEngine()
+    deployed = State(safety_car_event={"safety_car_type": 1, "event_type": 0})
+    same = State(safety_car_event={"safety_car_type": 1, "event_type": 0})
+    resuming = State(safety_car_event={"safety_car_type": 1, "event_type": 3})
+
+    events_first = engine.check_safety_car(deployed)
+    events_repeat = engine.check_safety_car(same)
+    events_resume = engine.check_safety_car(resuming)
+
+    assert len(events_first) == 1
+    assert events_first[0].kind == "safety_car"
+    assert events_repeat == []
+    assert len(events_resume) == 1
+
+
+def test_check_weather_forecast_fires_once_for_nearest_qualifying_rain():
+    engine = RuleEngine()
+    state = State(weather_forecast=[
+        {"time_offset": 5, "weather": 4, "rain_percentage": 70},
+        {"time_offset": 20, "weather": 5, "rain_percentage": 90},
+    ])
+
+    events_first = engine.check_weather_forecast(state)
+    events_repeat = engine.check_weather_forecast(state)
+
+    assert len(events_first) == 1
+    assert events_first[0].data["time_offset"] == 5
+    assert events_repeat == []
+
+
+def test_check_weather_forecast_ignores_dry_or_low_probability():
+    engine = RuleEngine()
+    state = State(weather_forecast=[
+        {"time_offset": 5, "weather": 1, "rain_percentage": 0},
+        {"time_offset": 10, "weather": 4, "rain_percentage": 10},
+    ])
+
+    assert engine.check_weather_forecast(state) == []
+
+
+def test_check_penalty_only_fires_for_player_car():
+    engine = RuleEngine()
+    rival_penalty = State(player_car_index=0, last_penalty={"vehicle_idx": 5, "time": 5})
+    my_penalty = State(player_car_index=0, last_penalty={"vehicle_idx": 0, "time": 10})
+
+    assert engine.check_penalty(rival_penalty) == []
+    events = engine.check_penalty(my_penalty)
+    assert len(events) == 1
+    assert events[0].kind == "penalty"
+    assert events[0].data["time"] == 10
+
+
+def test_check_collision_fires_when_player_involved():
+    engine = RuleEngine()
+    not_involved = State(player_car_index=0, last_collision={"vehicle1_idx": 4, "vehicle2_idx": 5, "severity": 1})
+    involved = State(player_car_index=0, last_collision={"vehicle1_idx": 0, "vehicle2_idx": 5, "severity": 2})
+
+    assert engine.check_collision(not_involved) == []
+    events = engine.check_collision(involved)
+    assert len(events) == 1
+    assert events[0].kind == "collision"
+
+
+def test_check_overtake_distinguishes_made_vs_lost():
+    engine = RuleEngine()
+    made = State(player_car_index=0, last_overtake={"overtaking_vehicle_idx": 0, "being_overtaken_vehicle_idx": 3})
+    lost = State(player_car_index=0, last_overtake={"overtaking_vehicle_idx": 3, "being_overtaken_vehicle_idx": 0})
+
+    events_made = engine.check_overtake(made)
+    events_lost = engine.check_overtake(lost)
+
+    assert events_made[0].kind == "overtake_made"
+    assert events_lost[0].kind == "overtake_lost"
+
+
+def test_check_damage_delta_fires_on_big_jump():
+    engine = RuleEngine()
+    before = State(damage_components={"rear_wing": 0, "floor": 0})
+    after_hit = State(damage_components={"rear_wing": 20, "floor": 2})
+
+    events_baseline = engine.check_damage_delta(before)  # first reading, nothing to compare
+    events_hit = engine.check_damage_delta(after_hit)
+    events_repeat = engine.check_damage_delta(after_hit)  # unchanged, no refire
+
+    assert events_baseline == []
+    assert len(events_hit) == 1
+    assert events_hit[0].kind == "damage_detected"
+    assert events_hit[0].data["component"] == "rear_wing"  # biggest jump
+    assert events_hit[0].data["delta"] == 20
+    assert events_repeat == []
+
+
+def test_check_damage_delta_ignores_small_wear_increase():
+    engine = RuleEngine()
+    before = State(damage_components={"rear_wing": 0})
+    slight_wear = State(damage_components={"rear_wing": 2})
+
+    engine.check_damage_delta(before)
+    events = engine.check_damage_delta(slight_wear)
+
+    assert events == []
+
+
+def test_check_damage_delta_fires_fault_event_on_transition():
+    engine = RuleEngine()
+    before = State(damage_components={"engine_blown": 0})
+    blown = State(damage_components={"engine_blown": 1})
+
+    engine.check_damage_delta(before)
+    events = engine.check_damage_delta(blown)
+
+    assert len(events) == 1
+    assert events[0].kind == "damage_fault"
+    assert events[0].data["component"] == "engine_blown"

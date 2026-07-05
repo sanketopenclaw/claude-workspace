@@ -26,6 +26,9 @@ class State:
     last_collision: dict = None
     last_overtake: dict = None
     last_retirement: dict = None
+    flag_status: int = None
+    player_car_index: int = None
+    damage_components: dict = dataclasses.field(default_factory=dict)
 
 
 class StateTracker:
@@ -47,14 +50,20 @@ class StateTracker:
             if s.last_lap_time_ms and (s.best_lap_time_ms is None or s.last_lap_time_ms < s.best_lap_time_ms):
                 s.best_lap_time_ms = s.last_lap_time_ms
 
-    def update_car_status(self, fuel_in_tank, fuel_remaining_laps):
+    def update_car_status(self, fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags):
         with self._lock:
             self._state.fuel_in_tank = fuel_in_tank
             self._state.fuel_remaining_laps = fuel_remaining_laps
+            self._state.flag_status = vehicle_fia_flags
 
-    def update_car_damage(self, tyres_wear):
+    def update_player_car_index(self, player_car_index):
+        with self._lock:
+            self._state.player_car_index = player_car_index
+
+    def update_car_damage(self, tyres_wear, damage_components=None):
         with self._lock:
             self._state.tyres_wear = list(tyres_wear)
+            self._state.damage_components = dict(damage_components or {})
 
     def update_session(self, session):
         with self._lock:
@@ -93,4 +102,5 @@ class StateTracker:
                 self._state,
                 tyres_wear=list(self._state.tyres_wear),
                 weather_forecast=list(self._state.weather_forecast),
+                damage_components=dict(self._state.damage_components),
             )

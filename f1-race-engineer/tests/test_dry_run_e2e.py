@@ -25,6 +25,7 @@ def _lap_data_packet():
 def _car_status_packet():
     header = _build_header(packet_id=7, player_car_index=PLAYER_INDEX)
     cars = [_build_car_status_car(fuel_in_tank=3.0, fuel_remaining_laps=1.5) for _ in range(24)]
+    cars[PLAYER_INDEX] = _build_car_status_car(fuel_in_tank=3.0, fuel_remaining_laps=1.5, vehicle_fia_flags=3)
     return header + b"".join(cars)
 
 
@@ -48,6 +49,12 @@ def _penalty_event_packet():
     return header + b"PENA" + payload
 
 
+def _safety_car_event_packet():
+    header = _build_header(packet_id=3, player_car_index=PLAYER_INDEX)
+    payload = _pack_spec(packets.EVENT_DETAIL_SPECS["SCAR"], {"safety_car_type": 2, "event_type": 0})
+    return header + b"SCAR" + payload
+
+
 def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     monkeypatch.setattr(phrasing, "PROVIDER_CHAIN", [])  # force canned lines, no real API calls
 
@@ -61,16 +68,28 @@ def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     listener._dispatch(_car_damage_packet())
     listener._dispatch(_session_packet())
     listener._dispatch(_penalty_event_packet())
+    listener._dispatch(_safety_car_event_packet())
 
     state = state_tracker.snapshot()
     assert state.weather == 4
     assert state.safety_car_status == 2
     assert state.last_penalty["vehicle_idx"] == 0
     assert state.last_penalty["other_vehicle_idx"] == 3
+    assert state.flag_status == 3
 
-    events = rule_engine.check_tyre_and_fuel(state) + rule_engine.check_gaps(state)
+    events = (
+        rule_engine.check_tyre_and_fuel(state)
+        + rule_engine.check_gaps(state)
+        + rule_engine.check_flag(state)
+        + rule_engine.check_safety_car(state)
+        + rule_engine.check_weather_forecast(state)
+        + rule_engine.check_penalty(state)
+    )
     kinds = {e.kind for e in events}
-    assert kinds == {"tyre_wear", "fuel_critical", "gap_closing_ahead", "gap_closing_behind"}
+    assert kinds == {
+        "tyre_wear", "fuel_critical", "gap_closing_ahead", "gap_closing_behind",
+        "flag_change", "safety_car", "weather_forecast", "penalty",
+    }
 
     for event in events:
         line = phrasing.event_to_line(event)
