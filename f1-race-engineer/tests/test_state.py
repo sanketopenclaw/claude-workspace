@@ -5,12 +5,14 @@ def test_update_lap_data_tracks_best_lap_time():
     tracker = StateTracker()
     tracker.update_lap_data(
         {"last_lap_time_ms": 0, "current_lap_time_ms": 20000, "sector1_time_ms": 0,
-         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 1, "delta_to_race_leader_ms": 5000},
+         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 1, "delta_to_race_leader_ms": 5000,
+         "lap_distance": 100.0},
         gap_ahead_ms=1000, gap_behind_ms=2000,
     )
     tracker.update_lap_data(
         {"last_lap_time_ms": 92000, "current_lap_time_ms": 5000, "sector1_time_ms": 0,
-         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 2, "delta_to_race_leader_ms": 4800},
+         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 2, "delta_to_race_leader_ms": 4800,
+         "lap_distance": 200.0},
         gap_ahead_ms=900, gap_behind_ms=2100,
     )
 
@@ -114,7 +116,7 @@ def test_update_lap_data_builds_leaderboard_sorted_by_position():
     ]
     tracker.update_lap_data(
         {"last_lap_time_ms": 0, "current_lap_time_ms": 0, "sector1_time_ms": 0, "sector2_time_ms": 0,
-         "car_position": 2, "current_lap_num": 4, "delta_to_race_leader_ms": 500},
+         "car_position": 2, "current_lap_num": 4, "delta_to_race_leader_ms": 500, "lap_distance": 300.0},
         gap_ahead_ms=500, gap_behind_ms=None, all_cars=all_cars,
     )
 
@@ -132,3 +134,22 @@ def test_update_participants_populates_names():
     names = tracker.snapshot().participant_names
 
     assert names == {0: "L. Rival", 1: "M. Teammate"}
+
+
+def test_update_motion_derives_speed_kmh_for_player_car():
+    tracker = StateTracker()
+    motion_cars = [
+        {"world_velocity_x": 0.0, "world_velocity_y": 0.0, "world_velocity_z": 0.0},
+        {"world_velocity_x": 30.0, "world_velocity_y": 0.0, "world_velocity_z": 40.0},  # 50 m/s -> 180 km/h
+    ]
+
+    tracker.update_motion(player_car_index=1, motion_cars=motion_cars)
+
+    assert tracker.snapshot().speed_kmh == 180.0
+
+
+def test_update_event_send_marks_session_ended():
+    tracker = StateTracker()
+    tracker.update_event("SEND", None)
+
+    assert tracker.snapshot().session_ended is True

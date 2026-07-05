@@ -13,7 +13,8 @@ def test_api_state_returns_expected_shape_and_values():
     tracker.update_participants(2, [{"name": "Me"}, {"name": "L. Rival"}])
     tracker.update_lap_data(
         {"last_lap_time_ms": 92104, "current_lap_time_ms": 45230, "sector1_time_ms": 0,
-         "sector2_time_ms": 0, "car_position": 4, "current_lap_num": 12, "delta_to_race_leader_ms": 8500},
+         "sector2_time_ms": 0, "car_position": 4, "current_lap_num": 12, "delta_to_race_leader_ms": 8500,
+         "lap_distance": 1500.0},
         gap_ahead_ms=812, gap_behind_ms=1240,
         all_cars=[
             {"car_position": 4, "delta_to_race_leader_ms": 8500, "current_lap_num": 12},

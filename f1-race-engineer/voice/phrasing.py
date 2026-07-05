@@ -26,6 +26,10 @@ CANNED_LINES = {
     "gap_to_leader": "Gap to pole, {gap_to_leader_ms} milliseconds.",
     "provisional_pole": "Provisional pole! Nice lap.",
     "rival_retired": "{name} is out of the session.",
+    "coaching_slower": "Losing time at {bucket_m} metres, {delta_kmh:.0f} down on your best.",
+    "speed_trap_personal_best": "Personal best speed trap.",
+    "speed_trap_overall_best": "Fastest speed trap in the session!",
+    "debrief_ready": "Session done. {lap_count} laps, best {best_lap_ms} milliseconds, average {avg_lap_ms:.0f}.",
 }
 
 FLAG_NAMES = {0: "no", 1: "green", 2: "blue", 3: "yellow"}

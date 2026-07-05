@@ -39,6 +39,10 @@ class State:
     leaderboard: list = dataclasses.field(default_factory=list)
     participant_names: dict = dataclasses.field(default_factory=dict)
     session_type: int = None
+    lap_distance: float = None
+    speed_kmh: float = None
+    last_speed_trap: dict = None
+    session_ended: bool = False
 
 
 class StateTracker:
@@ -58,6 +62,7 @@ class StateTracker:
             s.gap_ahead_ms = gap_ahead_ms
             s.gap_behind_ms = gap_behind_ms
             s.gap_to_leader_ms = my_lap["delta_to_race_leader_ms"]
+            s.lap_distance = my_lap["lap_distance"]
             if s.last_lap_time_ms and (s.best_lap_time_ms is None or s.last_lap_time_ms < s.best_lap_time_ms):
                 s.best_lap_time_ms = s.last_lap_time_ms
             if all_cars is not None:
@@ -94,6 +99,16 @@ class StateTracker:
             self._state.tyres_wear = list(tyres_wear)
             self._state.damage_components = dict(damage_components or {})
 
+    def update_motion(self, player_car_index, motion_cars):
+        player_motion = motion_cars[player_car_index]
+        speed_ms = (
+            player_motion["world_velocity_x"] ** 2
+            + player_motion["world_velocity_y"] ** 2
+            + player_motion["world_velocity_z"] ** 2
+        ) ** 0.5
+        with self._lock:
+            self._state.speed_kmh = speed_ms * 3.6
+
     def update_session(self, session):
         with self._lock:
             s = self._state
@@ -120,9 +135,14 @@ class StateTracker:
         "COLL": "last_collision",
         "OVTK": "last_overtake",
         "RTMT": "last_retirement",
+        "SPTP": "last_speed_trap",
     }
 
     def update_event(self, event_code, details):
+        if event_code == "SEND":
+            with self._lock:
+                self._state.session_ended = True
+            return
         field = self._EVENT_STATE_FIELD.get(event_code)
         if field is None:
             return

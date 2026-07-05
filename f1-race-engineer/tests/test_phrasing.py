@@ -69,6 +69,16 @@ def test_canned_line_for_rival_retired():
     assert phrasing._canned_line(event) == "L. Rival is out of the session."
 
 
+def test_canned_line_for_coaching_slower():
+    event = Event("coaching_slower", {"bucket_m": 300, "delta_kmh": 22.0})
+    assert phrasing._canned_line(event) == "Losing time at 300 metres, 22 down on your best."
+
+
+def test_canned_line_for_debrief_ready():
+    event = Event("debrief_ready", {"lap_count": 5, "best_lap_ms": 90000, "avg_lap_ms": 91500.0})
+    assert phrasing._canned_line(event) == "Session done. 5 laps, best 90000 milliseconds, average 91500."
+
+
 def test_answer_question_falls_back_to_canned_line_when_all_providers_fail(monkeypatch):
     from telemetry.state import State
 

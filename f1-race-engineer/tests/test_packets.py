@@ -20,7 +20,8 @@ def test_parse_header_extracts_packet_id_and_player_index():
 
 
 def _build_lap_data_car(last_lap_ms=90000, current_lap_ms=45000, sector1_ms=30000, sector2_ms=30000,
-                         delta_front_ms=800, delta_leader_ms=5000, car_position=5, current_lap_num=3):
+                         delta_front_ms=800, delta_leader_ms=5000, car_position=5, current_lap_num=3,
+                         lap_distance=100.0):
     return struct.pack(
         packets.LAP_DATA_FORMAT,
         last_lap_ms, current_lap_ms,
@@ -28,7 +29,7 @@ def _build_lap_data_car(last_lap_ms=90000, current_lap_ms=45000, sector1_ms=3000
         sector2_ms % 60000, sector2_ms // 60000,
         delta_front_ms % 60000, delta_front_ms // 60000,
         delta_leader_ms % 60000, delta_leader_ms // 60000,
-        100.0, 200.0, 0.0,
+        lap_distance, 200.0, 0.0,
         car_position, current_lap_num,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0,
@@ -52,6 +53,7 @@ def test_parse_lap_data_packet_extracts_player_car_and_gaps():
     assert gap_behind_ms == 750
     assert len(all_cars) == packets.NUM_CARS
     assert all_cars[1]["car_position"] == 1
+    assert all_cars[1]["lap_distance"] == 100.0
 
 
 def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3, vehicle_fia_flags=0,

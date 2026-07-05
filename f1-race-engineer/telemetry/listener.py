@@ -3,6 +3,7 @@ import struct
 import time
 from telemetry import packets
 
+PACKET_ID_MOTION = 0
 PACKET_ID_SESSION = 1
 PACKET_ID_LAP_DATA = 2
 PACKET_ID_EVENT = 3
@@ -52,7 +53,10 @@ class TelemetryListener:
             player_car_index = header["player_car_index"]
             packet_id = header["packet_id"]
             self.state_tracker.update_player_car_index(player_car_index)
-            if packet_id == PACKET_ID_LAP_DATA:
+            if packet_id == PACKET_ID_MOTION:
+                motion_cars = packets.parse_motion_packet(data)
+                self.state_tracker.update_motion(player_car_index, motion_cars)
+            elif packet_id == PACKET_ID_LAP_DATA:
                 my_lap, gap_ahead_ms, gap_behind_ms, all_cars = packets.parse_lap_data_packet(data, player_car_index)
                 self.state_tracker.update_lap_data(my_lap, gap_ahead_ms, gap_behind_ms, all_cars)
             elif packet_id == PACKET_ID_CAR_STATUS:

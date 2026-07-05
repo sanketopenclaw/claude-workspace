@@ -376,3 +376,91 @@ def test_check_pit_window_fires_once_at_ideal_and_latest_lap():
     assert events_ideal_repeat == []
     assert len(events_latest) == 1
     assert events_latest[0].kind == "pit_window_closing"
+
+
+def test_check_coaching_fires_when_slower_than_best_lap_reference():
+    engine = RuleEngine()
+
+    engine.check_lap_completion(State(current_lap_num=1))  # seed lap tracking, no event
+    engine.check_coaching(State(lap_distance=50.0, speed_kmh=200.0))  # lap 1 passes bucket 0 at 200 km/h
+
+    # Lap 1 completes as the first-ever lap -> becomes the reference (bucket 0 = 200 km/h)
+    engine.check_lap_completion(State(current_lap_num=2, last_lap_time_ms=90000, best_lap_time_ms=90000))
+
+    events = engine.check_coaching(State(lap_distance=50.0, speed_kmh=170.0))
+    events_repeat = engine.check_coaching(State(lap_distance=55.0, speed_kmh=170.0))  # same bucket, no refire
+
+    assert len(events) == 1
+    assert events[0].kind == "coaching_slower"
+    assert events[0].data["bucket_m"] == 0
+    assert events[0].data["delta_kmh"] == 30.0
+    assert events_repeat == []
+
+
+def test_check_coaching_silent_when_close_to_reference_pace():
+    engine = RuleEngine()
+    engine.check_lap_completion(State(current_lap_num=1))
+    engine.check_coaching(State(lap_distance=50.0, speed_kmh=200.0))
+    engine.check_lap_completion(State(current_lap_num=2, last_lap_time_ms=90000, best_lap_time_ms=90000))
+
+    events = engine.check_coaching(State(lap_distance=50.0, speed_kmh=195.0))  # only 5 km/h down
+
+    assert events == []
+
+
+def test_check_lap_completion_records_lap_history():
+    engine = RuleEngine()
+    engine.check_lap_completion(State(current_lap_num=1))
+    engine.check_lap_completion(State(
+        current_lap_num=2, last_lap_time_ms=90000, best_lap_time_ms=90000,
+        sector1_time_ms=30000, sector2_time_ms=30000, tyres_wear=[10.0, 12.0, 8.0, 9.0],
+    ))
+
+    history = engine.get_lap_history()
+
+    assert len(history) == 1
+    assert history[0]["lap_num"] == 1
+    assert history[0]["lap_time_ms"] == 90000
+    assert history[0]["worst_tyre_wear"] == 12.0
+
+
+def test_check_speed_trap_fires_only_for_player_bests():
+    engine = RuleEngine()
+    rival_trap = State(player_car_index=0, last_speed_trap={
+        "vehicle_idx": 5, "is_overall_fastest_in_session": 1, "is_driver_fastest_in_session": 0,
+    })
+    my_personal_best = State(player_car_index=0, last_speed_trap={
+        "vehicle_idx": 0, "is_overall_fastest_in_session": 0, "is_driver_fastest_in_session": 1,
+    })
+    my_overall_best = State(player_car_index=0, last_speed_trap={
+        "vehicle_idx": 0, "is_overall_fastest_in_session": 1, "is_driver_fastest_in_session": 1,
+    })
+
+    assert engine.check_speed_trap(rival_trap) == []
+    events_personal = engine.check_speed_trap(my_personal_best)
+    events_overall = engine.check_speed_trap(my_overall_best)
+
+    assert events_personal[0].kind == "speed_trap_personal_best"
+    assert events_overall[0].kind == "speed_trap_overall_best"
+
+
+def test_check_debrief_fires_once_at_session_end():
+    engine = RuleEngine()
+    engine.check_lap_completion(State(current_lap_num=1))
+    engine.check_lap_completion(State(current_lap_num=2, last_lap_time_ms=90000, best_lap_time_ms=90000))
+    engine.check_lap_completion(State(current_lap_num=3, last_lap_time_ms=91000, best_lap_time_ms=90000))
+
+    ended = State(session_ended=True)
+    events = engine.check_debrief(ended)
+    events_repeat = engine.check_debrief(ended)
+
+    assert len(events) == 1
+    assert events[0].kind == "debrief_ready"
+    assert events[0].data["lap_count"] == 2
+    assert events[0].data["best_lap_ms"] == 90000
+    assert events_repeat == []
+
+
+def test_check_debrief_silent_when_session_not_ended():
+    engine = RuleEngine()
+    assert engine.check_debrief(State(session_ended=False)) == []

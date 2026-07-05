@@ -40,6 +40,7 @@ def parse_lap_data_packet(data, player_car_index):
             "sector2_time_ms": _combine_delta(f[4], f[5]),
             "delta_to_car_in_front_ms": _combine_delta(f[6], f[7]),
             "delta_to_race_leader_ms": _combine_delta(f[8], f[9]),
+            "lap_distance": f[10],
             "car_position": f[13],
             "current_lap_num": f[14],
         })

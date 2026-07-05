@@ -15,6 +15,8 @@ ERS_LOW_THRESHOLD = 500000.0
 # 7=Q3, 8=Short Q, 9=OSQ. Gap-to-pole callout only makes sense in qualifying -
 # firing it every race lap would just be noise (gap_ahead/gap_behind cover races).
 QUALIFYING_SESSION_TYPES = {5, 6, 7, 8, 9}
+COACHING_BUCKET_METERS = 100
+COACHING_SPEED_DELTA_THRESHOLD_KMH = 15
 
 
 class RuleEngine:
@@ -40,6 +42,12 @@ class RuleEngine:
         self._fired_pit_window_ideal = False
         self._fired_pit_window_latest = False
         self._last_retirement_seen = None
+        self._current_lap_reference = {}
+        self._best_lap_reference = {}
+        self._coaching_fired_buckets = set()
+        self._lap_history = []
+        self._last_speed_trap_seen = None
+        self._debrief_fired = False
 
     def check_lap_completion(self, state):
         events = []
@@ -60,6 +68,23 @@ class RuleEngine:
                 else:
                     events.append(Event("gap_to_leader", {"gap_to_leader_ms": state.gap_to_leader_ms}))
             self._fired_tyre_thresholds = set()
+
+            # Coaching reference: the lap that just finished becomes the new
+            # "ghost" to beat whenever it improved the session best (including
+            # the very first completed lap, which has nothing to beat yet but
+            # still needs to seed the reference).
+            if state.best_lap_time_ms is not None and state.best_lap_time_ms != self._prev_best_lap_time_ms:
+                self._best_lap_reference = dict(self._current_lap_reference)
+            self._current_lap_reference = {}
+            self._coaching_fired_buckets = set()
+
+            self._lap_history.append({
+                "lap_num": self._last_lap_num_seen,
+                "lap_time_ms": state.last_lap_time_ms,
+                "sector1_time_ms": state.sector1_time_ms,
+                "sector2_time_ms": state.sector2_time_ms,
+                "worst_tyre_wear": max(state.tyres_wear) if state.tyres_wear else None,
+            })
         self._last_lap_num_seen = state.current_lap_num
         self._prev_best_lap_time_ms = state.best_lap_time_ms
         return events
@@ -259,3 +284,53 @@ class RuleEngine:
         if retirement is not None:
             self._last_retirement_seen = retirement
         return events
+
+    def check_coaching(self, state):
+        events = []
+        if state.lap_distance is None or state.speed_kmh is None or state.lap_distance < 0:
+            return events
+        bucket = int(state.lap_distance // COACHING_BUCKET_METERS)
+        self._current_lap_reference[bucket] = state.speed_kmh
+        reference_speed = self._best_lap_reference.get(bucket)
+        if reference_speed is not None and bucket not in self._coaching_fired_buckets:
+            delta = reference_speed - state.speed_kmh
+            if delta >= COACHING_SPEED_DELTA_THRESHOLD_KMH:
+                events.append(Event("coaching_slower", {
+                    "bucket_m": bucket * COACHING_BUCKET_METERS,
+                    "delta_kmh": delta,
+                }))
+                self._coaching_fired_buckets.add(bucket)
+        return events
+
+    def check_speed_trap(self, state):
+        events = []
+        trap = state.last_speed_trap
+        if (
+            trap is not None
+            and trap != self._last_speed_trap_seen
+            and state.player_car_index is not None
+            and trap.get("vehicle_idx") == state.player_car_index
+        ):
+            if trap.get("is_overall_fastest_in_session"):
+                events.append(Event("speed_trap_overall_best", dict(trap)))
+            elif trap.get("is_driver_fastest_in_session"):
+                events.append(Event("speed_trap_personal_best", dict(trap)))
+        if trap is not None:
+            self._last_speed_trap_seen = trap
+        return events
+
+    def check_debrief(self, state):
+        events = []
+        if state.session_ended and not self._debrief_fired:
+            self._debrief_fired = True
+            lap_times = [lap["lap_time_ms"] for lap in self._lap_history if lap["lap_time_ms"]]
+            if lap_times:
+                events.append(Event("debrief_ready", {
+                    "lap_count": len(self._lap_history),
+                    "best_lap_ms": min(lap_times),
+                    "avg_lap_ms": sum(lap_times) / len(lap_times),
+                }))
+        return events
+
+    def get_lap_history(self):
+        return list(self._lap_history)
