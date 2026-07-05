@@ -1,4 +1,5 @@
 openai
+cerebras-cloud-sdk
 edge-tts
 pygame
 openwakeword
