@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<title>Race Engineer</title>
+</head>
+<body>
+<div class="grid">
+  <section class="panel telemetry">
+    <div class="panel-header">
+      <span class="dot dot-red"></span>
+      <span class="label">LIVE TELEMETRY</span>
+      <span class="lap-badge">LAP <span id="lapNum">0</span></span>
+    </div>
+    <div class="row-top">
+      <div class="card lap-card">
+        <span class="mini-label">CURRENT LAP</span>
+        <span class="big-num" id="curLap">--:--.---</span>
+        <div class="delta-row">
+          <span class="mini-label">&Delta; PB</span>
+          <span class="delta-num" id="deltaText">--.---</span>
+        </div>
+      </div>
+      <div class="card pos-card">
+        <span class="mini-label">POS</span>
+        <span class="pos-num" id="position">--</span>
+      </div>
+    </div>
+    <div class="row-gaps">
+      <div class="card">
+        <span class="mini-label">GAP AHEAD</span>
+        <div class="gap-num gap-ahead" id="gapAhead">--.---</div>
+      </div>
+      <div class="card">
+        <span class="mini-label">GAP BEHIND</span>
+        <div class="gap-num gap-behind" id="gapBehind">--.---</div>
+      </div>
+    </div>
+    <div class="row-bottom">
+      <div class="card pit-card placeholder" id="pitCard">
+        <span class="mini-label">PIT WINDOW &middot; REJOIN</span>
+        <span class="placeholder-text">Awaiting data</span>
+      </div>
+      <div class="card weather-card placeholder" id="weatherCard">
+        <span class="mini-label">WEATHER</span>
+        <span class="placeholder-text">Awaiting data</span>
+      </div>
+    </div>
+    <div class="row-tyres">
+      <div class="tyre"><span class="mini-label">FL</span><span class="tyre-pct" id="tyreFL">--%</span></div>
+      <div class="tyre"><span class="mini-label">FR</span><span class="tyre-pct" id="tyreFR">--%</span></div>
+      <div class="tyre"><span class="mini-label">RL</span><span class="tyre-pct" id="tyreRL">--%</span></div>
+      <div class="tyre"><span class="mini-label">RR</span><span class="tyre-pct" id="tyreRR">--%</span></div>
+    </div>
+  </section>
+
+  <div class="right-col">
+    <section class="panel radio">
+      <div class="panel-header">
+        <span class="dot dot-green"></span>
+        <span class="label">TEAM RADIO</span>
+      </div>
+      <div class="log" id="log"></div>
+    </section>
+
+    <section class="panel setup placeholder">
+      <div class="panel-header">
+        <span class="dot dot-dim"></span>
+        <span class="label label-dim">CAR SETUP</span>
+      </div>
+      <div class="setup-body">
+        <span class="gear-icon">&#9881;</span>
+        <span class="setup-text">Setup recommendations coming soon</span>
+      </div>
+    </section>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
