@@ -1,7 +1,7 @@
 # F1 25 AI Race Engineer — Phase 1 (MVP) Design Spec
 
 **Date:** 2026-07-05
-**Project:** new project, deployed/run on the game PC (separate machine from this session, which also has Claude Code)
+**Project:** new project, `C:\Claude\f1-race-engineer\`, built and run on this laptop (cross-network from the separate game PC, laptop sits next to the driver so voice output is audible while racing)
 **Status:** Approved
 
 ---
@@ -29,7 +29,7 @@ Phase 2 and 3 are intentionally out of scope for this spec — each is its own s
 ## Architecture
 
 ```
-<game-pc>\f1-race-engineer\
+C:\Claude\f1-race-engineer\
 ├── main.py                  # orchestrator: starts listener, rule engine, wake-word thread, overlay
 ├── telemetry/
 │   ├── listener.py          # UDP socket (port 20777), parses F1 25 packet format
@@ -46,7 +46,7 @@ Phase 2 and 3 are intentionally out of scope for this spec — each is its own s
 └── config.py                 # thresholds, API keys, wake word phrase, ports
 ```
 
-**Stack:** Python 3, on the game PC. Claude Code session on that same machine used to build/run it.
+**Stack:** Python 3, on this laptop. Telemetry arrives cross-network (UDP) from the separate game PC over LAN.
 
 **Key libraries:** raw `socket` for UDP (or a maintained F1-24/25 telemetry parsing lib if the packet format matches — confirm at implementation time), `openWakeWord` (free, local wake-word), `faster-whisper` (free, local STT), `edge-tts` (free TTS), Claude API for phrasing/Q&A.
 
@@ -86,6 +86,20 @@ Phase 2 and 3 are intentionally out of scope for this spec — each is its own s
 
 ## Network/Deployment Note
 
-Game and app both run on the same PC (the game PC), which also has its own Claude Code session — build and run happens there directly, not on this machine. No cross-machine audio streaming needed (that was considered and rejected for latency/complexity).
+Game runs on separate PC; app + voice output run on this laptop, sitting next to the driver during racing. Telemetry crosses the LAN via UDP. Both devices must be on the same LAN/subnet (not an isolated guest wifi network) for packets to reach the laptop.
 
-Game-side setup required before first run: enable UDP Telemetry broadcast in F1 25 settings (On, port 20777, target IP set to `127.0.0.1` or local broadcast since app runs on the same machine).
+**Game-side settings (F1 25 → Telemetry Settings):**
+| Setting | Value |
+|---|---|
+| UDP Telemetry | On |
+| UDP Broadcast Mode | Off |
+| UDP IP Address | `192.168.0.115` (this laptop's current LAN IP) |
+| UDP Port | 20777 |
+| UDP Send Rate | 20Hz |
+| UDP Format | 2025 |
+| Your Telemetry | **Public** (change from Restricted — Restricted risks stripped/incomplete CarStatus/CarSetup fields) |
+| Show player names | Off (unchanged, doesn't affect telemetry data) |
+
+**Laptop-side setup:**
+- Allow inbound UDP port 20777 through Windows Firewall on this laptop.
+- Laptop IP above is DHCP-assigned and can change on reconnect — if telemetry stops arriving after a reboot/reconnect, re-check `ipconfig` and update the game's UDP IP Address setting to match (or switch to a static IP / DHCP reservation on the router to avoid this).
