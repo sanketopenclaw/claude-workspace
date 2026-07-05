@@ -77,8 +77,10 @@ not marked done is still just an idea.
 
 ## Dashboard
 
-- [ ] Session history DB — browse past races in dashboard
-- [ ] **Halo HUD overlay style** — minimal in-cockpit overlay option
+- [x] Session history DB — `session_history.jsonl` + `/history` page
+  (**simplified**: JSON-lines file, not a real database - fine at this scale)
+- [x] **Halo HUD overlay style** — `/hud` page (**simplified**: a browser page
+  meant to sit in a small window, not a true OS-level always-on-top overlay)
 
 ---
 
