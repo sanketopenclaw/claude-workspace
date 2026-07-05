@@ -37,8 +37,13 @@ body {
 .gap-ahead { color: #f2c94c; }
 .gap-behind { color: #56a3f5; }
 
+.row-fuel { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.fuel-num { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 28px; margin-top: 4px; font-variant-numeric: tabular-nums; color: #3fb950; }
+
 .row-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .placeholder-text { display: block; margin-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #4a5462; }
+.pit-card.placeholder .placeholder-text, .weather-card.placeholder .placeholder-text { color: #4a5462; }
+.pit-card:not(.placeholder) .placeholder-text, .weather-card:not(.placeholder) .placeholder-text { color: #dbe2e9; }
 
 .row-tyres { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .tyre { background: #0a0d10; border: 1px solid #1c232b; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; align-items: center; }

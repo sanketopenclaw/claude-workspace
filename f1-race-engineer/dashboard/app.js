@@ -78,7 +78,27 @@ async function poll() {
     el.className = "tyre-pct " + tyreColorClass(wear[i]);
   });
 
+  const fuelEl = document.getElementById("fuel");
+  if (data.fuel_in_tank == null || data.fuel_remaining_laps == null) {
+    fuelEl.textContent = "--kg · -- laps";
+  } else {
+    fuelEl.textContent = data.fuel_in_tank.toFixed(1) + "kg · " + data.fuel_remaining_laps.toFixed(1) + " laps";
+  }
+
+  const pitTextEl = document.getElementById("pitStatusText");
+  if (data.pit_rejoin_position == null) {
+    pitTextEl.textContent = "Awaiting data";
+  } else {
+    pitTextEl.textContent = "P" + data.pit_rejoin_position;
+  }
   document.getElementById("pitCard").classList.toggle("placeholder", data.pit_rejoin_position == null);
+
+  const weatherTextEl = document.getElementById("weatherStatusText");
+  if (data.weather == null) {
+    weatherTextEl.textContent = "Awaiting data";
+  } else {
+    weatherTextEl.textContent = JSON.stringify(data.weather);
+  }
   document.getElementById("weatherCard").classList.toggle("placeholder", data.weather == null);
 
   renderLog(data.log || []);
