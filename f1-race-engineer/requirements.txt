@@ -1,0 +1,8 @@
+anthropic
+edge-tts
+pygame
+openwakeword
+faster-whisper
+sounddevice
+numpy
+pytest
