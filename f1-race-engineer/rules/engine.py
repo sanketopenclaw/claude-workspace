@@ -50,3 +50,15 @@ class RuleEngine:
             self._fired_fuel_warning = False
 
         return events
+
+    def check_gaps(self, state):
+        events = []
+        if state.gap_ahead_ms is not None and state.gap_ahead_ms < 1000:
+            if self._last_gap_ahead_alert_lap != state.current_lap_num:
+                events.append(Event("gap_closing_ahead", {"gap_ms": state.gap_ahead_ms}))
+                self._last_gap_ahead_alert_lap = state.current_lap_num
+        if state.gap_behind_ms is not None and state.gap_behind_ms < 1000:
+            if self._last_gap_behind_alert_lap != state.current_lap_num:
+                events.append(Event("gap_closing_behind", {"gap_ms": state.gap_behind_ms}))
+                self._last_gap_behind_alert_lap = state.current_lap_num
+        return events

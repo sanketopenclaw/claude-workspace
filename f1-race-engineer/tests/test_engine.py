@@ -55,3 +55,54 @@ def test_fuel_critical_fires_once_when_below_two_laps():
     assert len(events_low_first) == 1
     assert events_low_first[0].kind == "fuel_critical"
     assert events_low_second == []
+
+
+def test_gap_closing_fires_once_per_lap_per_direction():
+    engine = RuleEngine()
+    close_ahead = State(current_lap_num=1, gap_ahead_ms=800, gap_behind_ms=5000)
+
+    events_first = engine.check_gaps(close_ahead)
+    events_second = engine.check_gaps(close_ahead)  # same lap, no refire
+
+    assert len(events_first) == 1
+    assert events_first[0].kind == "gap_closing_ahead"
+    assert events_first[0].data["gap_ms"] == 800
+    assert events_second == []
+
+    next_lap_still_close = State(current_lap_num=2, gap_ahead_ms=700, gap_behind_ms=5000)
+    events_next_lap = engine.check_gaps(next_lap_still_close)
+
+    assert len(events_next_lap) == 1  # new lap, allowed to fire again
+
+
+def test_gap_closing_fires_independently_per_direction():
+    engine = RuleEngine()
+    # Both gaps close on lap 1
+    both_close = State(current_lap_num=1, gap_ahead_ms=800, gap_behind_ms=900)
+
+    events = engine.check_gaps(both_close)
+
+    assert len(events) == 2
+    kinds = {e.kind for e in events}
+    assert kinds == {"gap_closing_ahead", "gap_closing_behind"}
+    assert next(e for e in events if e.kind == "gap_closing_ahead").data["gap_ms"] == 800
+    assert next(e for e in events if e.kind == "gap_closing_behind").data["gap_ms"] == 900
+
+
+def test_gap_closing_does_not_fire_at_exactly_1000ms():
+    engine = RuleEngine()
+    exactly_1000 = State(current_lap_num=1, gap_ahead_ms=1000, gap_behind_ms=1000)
+
+    events = engine.check_gaps(exactly_1000)
+
+    assert events == []  # threshold is strictly under 1000
+
+
+def test_gap_closing_handles_none_values():
+    engine = RuleEngine()
+    # None values should not crash
+    state_with_nones = State(current_lap_num=1, gap_ahead_ms=None, gap_behind_ms=None)
+
+    events = engine.check_gaps(state_with_nones)
+
+    assert events == []
