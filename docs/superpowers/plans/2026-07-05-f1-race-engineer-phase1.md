@@ -4,9 +4,9 @@
 
 **Goal:** Live AI race engineer for F1 25 — listens to real UDP telemetry from the game PC, speaks 3 proactive callouts (lap delta, tyre/fuel, gap to rivals), and answers spoken questions on demand.
 
-**Architecture:** UDP listener parses F1 25 telemetry packets into a shared `State` object; a deterministic `RuleEngine` watches `State` for threshold crossings and emits `Event`s; Claude phrases each `Event` into one spoken line (with a canned-template fallback if the API call fails); a wake-word thread listens for a spoken question and routes it through STT → Claude → TTS. Runs entirely on the laptop (this machine), receiving telemetry cross-network from the separate game PC.
+**Architecture:** UDP listener parses F1 25 telemetry packets into a shared `State` object; a deterministic `RuleEngine` watches `State` for threshold crossings and emits `Event`s; an LLM phrases each `Event` into one spoken line (tried across a 4-provider fallback chain, with a canned-template as the final fallback); a wake-word thread listens for a spoken question and routes it through STT → LLM → TTS. A local Flask dashboard shows live telemetry and the engineer's spoken/Q&A log in a browser tab. Runs entirely on the laptop (this machine), receiving telemetry cross-network from the separate game PC.
 
-**Tech Stack:** Python 3, `anthropic` (Claude API), `edge-tts` + `pygame` (voice out), `openwakeword` + `sounddevice` (wake word), `faster-whisper` (speech-to-text), `tkinter` (text overlay), `pytest`.
+**Tech Stack:** Python 3, `openai` SDK (used for 3 OpenAI-compatible providers: OpenRouter, NVIDIA NIM, Mistral) + `cerebras-cloud-sdk` (Cerebras), `edge-tts` + `pygame` (voice out), `openwakeword` + `sounddevice` (wake word), `faster-whisper` (speech-to-text), `Flask` (dashboard), `pytest`.
 
 ## Global Constraints
 
@@ -14,9 +14,10 @@
 - Packet struct layouts below are copied verbatim from the official F1 25 UDP telemetry structs (verified against `MacManley/f1-25-udp` on GitHub, a released F1 25 telemetry parser) — do not "simplify" these byte layouts, they must match exactly or every field after the first mismatch decodes garbage.
 - Tyre wear array order (`m_tyresWear[4]`) is not verified against index meaning (front/rear/left/right) — Phase 1 only uses `max()` of the 4 values, so exact index-to-wheel mapping doesn't matter yet. Do not assume index 0 = front-left without checking the official spec first if a later phase needs per-wheel detail.
 - Phase 1 lap/sector delta trigger is **lap-level only** (fires on full-lap purple, i.e., beats session best lap time). Live per-sector purple/green/yellow mid-lap is deferred — it needs a sector-completion edge detector that's meaningfully more state to track correctly, and is not needed for a first working version. Note this scope cut, don't silently expand it mid-implementation.
-- Claude model: `claude-haiku-4-5-20251001` for both phrasing and Q&A — callouts need to be fast and are simple templated asks, not deep reasoning.
+- LLM provider fallback chain for phrasing/Q&A, ordered by model capability (smartest first): **OpenRouter** (`anthropic/claude-haiku-4.5` via OpenAI-compatible endpoint) → **NVIDIA NIM** (`meta/llama-3.1-405b-instruct`) → **Cerebras** (`gemma-4-31b`, native `cerebras-cloud-sdk`) → **Mistral** (`mistral-small-latest` via OpenAI-compatible endpoint) → canned template (final, deterministic, no network). Each provider is tried in order; the first one that doesn't raise wins. `config.py` already has all 4 providers' model/base_url constants and `get_*_api_key()` functions (added across 4 follow-up amendments to Task 1) — this plan's Task 12 wires them together.
 - Wake phrase for Phase 1 is the pretrained `hey_jarvis` openWakeWord model (confirmed working via its GitHub README), not a custom "hey engineer" phrase — training a custom model is separate future work.
-- `ANTHROPIC_API_KEY` must be set as an environment variable — never hardcode it.
+- All 5 API keys (`ANTHROPIC_API_KEY` [unused], `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `CEREBRAS_API_KEY`, `MISTRAL_API_KEY`) are already set as persistent user environment variables on this machine via `setx` — never hardcode any of them.
+- Dashboard ships with two honest placeholder panels (Pit Window, Weather) — their backend data (pit-strategy calculator, Session-packet weather parsing) doesn't exist yet and is Phase 2 backlog. Never show fabricated/simulated numbers in these panels in the shipped app — `null` in the `/api/state` JSON means "show placeholder," a real number means "show it." See `docs/superpowers/specs/2026-07-05-f1-race-engineer-dashboard-design.md` for the full dashboard design.
 
 ---
 
@@ -27,7 +28,6 @@ C:\Claude\f1-race-engineer\
 ├── requirements.txt
 ├── config.py
 ├── main.py
-├── overlay.py
 ├── telemetry\
 │   ├── __init__.py
 │   ├── packets.py       # struct formats + parse functions
@@ -39,15 +39,25 @@ C:\Claude\f1-race-engineer\
 │   └── engine.py          # Event dataclass + RuleEngine
 ├── voice\
 │   ├── __init__.py
-│   ├── phrasing.py        # Claude calls: event_to_line(), answer_question()
+│   ├── phrasing.py        # LLM fallback chain: event_to_line(), answer_question()
 │   ├── tts.py              # speak(text) via edge-tts + pygame
 │   ├── wakeword.py         # WakeWordListener thread (openwakeword)
 │   └── stt.py               # record_question() + transcribe() (faster-whisper)
+├── dashboard\
+│   ├── __init__.py
+│   ├── log.py              # EngineerLog: thread-safe rolling deque of callouts/Q&A
+│   ├── server.py            # Flask app: GET /api/state, serves index.html
+│   ├── index.html            # dashboard page structure
+│   ├── style.css              # dark racing-dashboard theme
+│   └── app.js                  # polling + DOM update logic
 └── tests\
     ├── test_packets.py
     ├── test_capture.py
     ├── test_state.py
-    └── test_engine.py
+    ├── test_engine.py
+    ├── test_phrasing.py
+    ├── test_log.py
+    └── test_dashboard_server.py
 ```
 
 ---
@@ -1013,24 +1023,78 @@ git commit -m "Add rule engine: gap-closing detection"
 
 ---
 
-### Task 12: Claude phrasing module
+### Task 12: LLM phrasing module (4-provider fallback chain)
 
 **Files:**
 - Create: `C:\Claude\f1-race-engineer\voice\phrasing.py`
+- Create: `C:\Claude\f1-race-engineer\tests\test_phrasing.py`
 
 **Interfaces:**
-- Consumes: `config.ANTHROPIC_MODEL`, `config.get_anthropic_api_key()` (Task 1); `rules.engine.Event` (Task 9); `telemetry.state.State` (Task 7)
-- Produces: `phrasing.event_to_line(event: Event) -> str`, `phrasing.answer_question(question: str, state: State) -> str`
+- Consumes: `config.OPENROUTER_MODEL`/`OPENROUTER_BASE_URL`/`get_openrouter_api_key()`, `config.NVIDIA_MODEL`/`NVIDIA_BASE_URL`/`get_nvidia_api_key()`, `config.CEREBRAS_MODEL`/`get_cerebras_api_key()`, `config.MISTRAL_MODEL`/`MISTRAL_BASE_URL`/`get_mistral_api_key()` (all already in `config.py` from Task 1's follow-up amendments); `rules.engine.Event` (Task 9); `telemetry.state.State` (Task 7)
+- Produces: `phrasing.event_to_line(event: Event) -> str`, `phrasing.answer_question(question: str, state: State) -> str`, `phrasing._call_llm(prompt: str, max_tokens: int, provider_chain: list|None = None) -> str|None` (the `provider_chain` param exists purely so tests can inject fake providers instead of hitting real APIs)
 
-No automated test — this task calls the live Claude API, so it's manually verified in Task 17's end-to-end check. The canned-fallback path (`_canned_line`) is deterministic and testable.
+The fallback-chain logic (`_call_llm` trying providers in order, skipping failures) is unit-tested with fake provider functions — no real network calls in the test suite. The 4 real provider functions themselves and the canned-line fallback are manually verified in Task 20's end-to-end check.
 
-- [ ] **Step 1: Write `voice/phrasing.py`**
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-import anthropic
-import config
+# tests/test_phrasing.py
+from rules.engine import Event
+from voice import phrasing
 
-_client = anthropic.Anthropic(api_key=config.get_anthropic_api_key())
+
+def test_call_llm_returns_first_successful_provider_and_skips_failures():
+    def fails(prompt, max_tokens):
+        raise RuntimeError("simulated failure")
+
+    def succeeds(prompt, max_tokens):
+        return "  engineer line  "
+
+    result = phrasing._call_llm("test prompt", 60, provider_chain=[fails, succeeds])
+
+    assert result == "engineer line"
+
+
+def test_call_llm_returns_none_when_all_providers_fail():
+    def fails(prompt, max_tokens):
+        raise RuntimeError("simulated failure")
+
+    result = phrasing._call_llm("test prompt", 60, provider_chain=[fails, fails])
+
+    assert result is None
+
+
+def test_event_to_line_falls_back_to_canned_when_all_providers_fail(monkeypatch):
+    monkeypatch.setattr(phrasing, "_call_llm", lambda prompt, max_tokens: None)
+    event = Event("tyre_wear", {"threshold": 30, "remaining_pct": 28.0})
+
+    result = phrasing.event_to_line(event)
+
+    assert result == "Tyres at 28 percent, box window opening."
+
+
+def test_answer_question_falls_back_to_canned_line_when_all_providers_fail(monkeypatch):
+    from telemetry.state import State
+
+    monkeypatch.setattr(phrasing, "_call_llm", lambda prompt, max_tokens: None)
+    state = State(current_lap_num=5, car_position=3)
+
+    result = phrasing.answer_question("how's fuel?", state)
+
+    assert result == "Radio's breaking up, say again."
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd C:/Claude/f1-race-engineer && pytest tests/test_phrasing.py -v`
+Expected: FAIL — `voice.phrasing` module not found
+
+- [ ] **Step 3: Write `voice/phrasing.py`**
+
+```python
+from cerebras.cloud.sdk import Cerebras
+from openai import OpenAI
+import config
 
 CANNED_LINES = {
     "lap_purple": "Purple lap! New session best, {lap_time_ms} milliseconds.",
@@ -1049,20 +1113,69 @@ def _canned_line(event):
         return "Note: {}".format(event.kind)
 
 
+def _try_openrouter(prompt, max_tokens):
+    client = OpenAI(base_url=config.OPENROUTER_BASE_URL, api_key=config.get_openrouter_api_key())
+    resp = client.chat.completions.create(
+        model=config.OPENROUTER_MODEL,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.choices[0].message.content
+
+
+def _try_nvidia(prompt, max_tokens):
+    client = OpenAI(base_url=config.NVIDIA_BASE_URL, api_key=config.get_nvidia_api_key())
+    resp = client.chat.completions.create(
+        model=config.NVIDIA_MODEL,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.choices[0].message.content
+
+
+def _try_cerebras(prompt, max_tokens):
+    client = Cerebras(api_key=config.get_cerebras_api_key())
+    resp = client.chat.completions.create(
+        model=config.CEREBRAS_MODEL,
+        max_completion_tokens=max_tokens,
+        temperature=0.2,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.choices[0].message.content
+
+
+def _try_mistral(prompt, max_tokens):
+    client = OpenAI(base_url=config.MISTRAL_BASE_URL, api_key=config.get_mistral_api_key())
+    resp = client.chat.completions.create(
+        model=config.MISTRAL_MODEL,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.choices[0].message.content
+
+
+PROVIDER_CHAIN = [_try_openrouter, _try_nvidia, _try_cerebras, _try_mistral]
+
+
+def _call_llm(prompt, max_tokens, provider_chain=None):
+    chain = provider_chain if provider_chain is not None else PROVIDER_CHAIN
+    for provider_fn in chain:
+        try:
+            result = provider_fn(prompt, max_tokens)
+            if result:
+                return result.strip()
+        except Exception:
+            continue
+    return None
+
+
 def event_to_line(event):
     prompt = (
         "You are a terse F1 race engineer speaking on team radio. "
         f"React to this event in ONE short sentence, no filler: {event.kind} with data {event.data}."
     )
-    try:
-        resp = _client.messages.create(
-            model=config.ANTHROPIC_MODEL,
-            max_tokens=60,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.content[0].text.strip()
-    except Exception:
-        return _canned_line(event)
+    result = _call_llm(prompt, max_tokens=60)
+    return result if result else _canned_line(event)
 
 
 def answer_question(question, state):
@@ -1076,27 +1189,25 @@ def answer_question(question, state):
         f"You are a terse F1 race engineer on team radio. {context}\n"
         f'Driver asks: "{question}"\nAnswer in one or two short sentences.'
     )
-    try:
-        resp = _client.messages.create(
-            model=config.ANTHROPIC_MODEL,
-            max_tokens=100,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.content[0].text.strip()
-    except Exception:
-        return "Radio's breaking up, say again."
+    result = _call_llm(prompt, max_tokens=100)
+    return result if result else "Radio's breaking up, say again."
 ```
 
-- [ ] **Step 2: Manually verify the canned fallback**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd C:/Claude/f1-race-engineer && python -c "from rules.engine import Event; from voice.phrasing import _canned_line; print(_canned_line(Event('tyre_wear', {'threshold': 30, 'remaining_pct': 28.0})))"`
-Expected: prints `Tyres at 28 percent, box window opening.`
+Run: `pytest tests/test_phrasing.py -v`
+Expected: PASS (4 tests)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Manually verify at least one real provider call works**
+
+Run: `cd C:/Claude/f1-race-engineer && python -c "from voice.phrasing import _call_llm; print(_call_llm('Say hello in exactly 3 words.', 20))"`
+Expected: prints a short real response (not `None`) — confirms at least the first working provider in the chain is reachable with the configured API key.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add voice/phrasing.py
-git commit -m "Add Claude phrasing module with canned-line fallback"
+git add voice/phrasing.py tests/test_phrasing.py
+git commit -m "Add LLM phrasing module with 4-provider fallback chain"
 ```
 
 ---
@@ -1288,82 +1399,502 @@ git commit -m "Add speech-to-text recording and transcription"
 
 ---
 
-### Task 16: Overlay window
+### Task 16: Engineer log
 
 **Files:**
-- Create: `C:\Claude\f1-race-engineer\overlay.py`
+- Create: `C:\Claude\f1-race-engineer\dashboard\__init__.py` (empty)
+- Create: `C:\Claude\f1-race-engineer\dashboard\log.py`
+- Create: `C:\Claude\f1-race-engineer\tests\test_log.py`
 
 **Interfaces:**
-- Produces: `overlay.OverlayWindow` with `.show_message(text: str)` (thread-safe, callable from any thread) and `.run()` (blocking, must be called from the main thread)
+- Produces: `log.EngineerLog(maxlen=50)` with `.add_callout(time_str: str, text: str)`, `.add_qa(time_str: str, question: str, answer: str)`, `.snapshot() -> list[dict]`. Callout entries: `{"time": ..., "type": "callout", "text": ...}`. Q&A entries: `{"time": ..., "type": "qa", "q": ..., "text": ...}`.
 
-- [ ] **Step 1: Write `overlay.py`**
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-import queue
-import tkinter as tk
+# tests/test_log.py
+from dashboard.log import EngineerLog
 
 
-class OverlayWindow:
-    def __init__(self):
-        self._queue = queue.Queue()
-        self._root = tk.Tk()
-        self._root.title("Race Engineer")
-        self._root.attributes("-topmost", True)
-        self._root.geometry("500x100+50+50")
-        self._label = tk.Label(self._root, text="", font=("Consolas", 14), wraplength=480, justify="left")
-        self._label.pack(padx=10, pady=10)
-        self._poll()
+def test_engineer_log_maxlen_evicts_oldest():
+    log = EngineerLog(maxlen=2)
+    log.add_callout("t1", "first")
+    log.add_callout("t2", "second")
+    log.add_callout("t3", "third")
 
-    def show_message(self, text):
-        self._queue.put(text)
+    snapshot = log.snapshot()
 
-    def _poll(self):
-        try:
-            while True:
-                text = self._queue.get_nowait()
-                self._label.config(text=text)
-        except queue.Empty:
-            pass
-        self._root.after(200, self._poll)
+    assert len(snapshot) == 2
+    assert snapshot[0]["text"] == "second"
+    assert snapshot[1]["text"] == "third"
 
-    def run(self):
-        self._root.mainloop()
+
+def test_engineer_log_qa_entry_shape():
+    log = EngineerLog()
+    log.add_qa("t1", "How's fuel?", "Fine, push on.")
+
+    snapshot = log.snapshot()
+
+    assert snapshot[0] == {"time": "t1", "type": "qa", "q": "How's fuel?", "text": "Fine, push on."}
 ```
 
-- [ ] **Step 2: Manually verify the window updates from a background thread**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd C:/Claude/f1-race-engineer && python -c "
-import threading, time
-from overlay import OverlayWindow
-o = OverlayWindow()
-def updater():
-    time.sleep(2)
-    o.show_message('Box this lap, box box box.')
-threading.Thread(target=updater, daemon=True).start()
-o.run()
-"`
-Expected: window appears, shows the message 2 seconds later. Close the window to exit.
+Run: `cd C:/Claude/f1-race-engineer && mkdir -p dashboard && touch dashboard/__init__.py && pytest tests/test_log.py -v`
+Expected: FAIL — `dashboard.log` module not found
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Write `dashboard/log.py`**
+
+```python
+import collections
+import threading
+
+
+class EngineerLog:
+    def __init__(self, maxlen=50):
+        self._lock = threading.Lock()
+        self._entries = collections.deque(maxlen=maxlen)
+
+    def add_callout(self, time_str, text):
+        with self._lock:
+            self._entries.append({"time": time_str, "type": "callout", "text": text})
+
+    def add_qa(self, time_str, question, answer):
+        with self._lock:
+            self._entries.append({"time": time_str, "type": "qa", "q": question, "text": answer})
+
+    def snapshot(self):
+        with self._lock:
+            return list(self._entries)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `pytest tests/test_log.py -v`
+Expected: PASS (2 tests)
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add overlay.py
-git commit -m "Add always-on-top text overlay window"
+git add dashboard/__init__.py dashboard/log.py tests/test_log.py
+git commit -m "Add thread-safe EngineerLog for dashboard callout/Q&A feed"
 ```
 
 ---
 
-### Task 17: Main orchestrator
+### Task 17: Dashboard Flask server
+
+**Files:**
+- Create: `C:\Claude\f1-race-engineer\dashboard\server.py`
+- Create: `C:\Claude\f1-race-engineer\tests\test_dashboard_server.py`
+- Modify: `C:\Claude\f1-race-engineer\requirements.txt`
+
+**Interfaces:**
+- Consumes: `telemetry.state.StateTracker` (Task 7), `dashboard.log.EngineerLog` (Task 16)
+- Produces: `server.create_app(state_tracker, engineer_log) -> Flask app` (for testing), `server.run_dashboard_server(state_tracker, engineer_log, port=5000)` (blocking, called from a background thread in Task 19)
+
+- [ ] **Step 1: Add `flask` to requirements and install**
+
+Add a line `flask` to `C:\Claude\f1-race-engineer\requirements.txt`, then run:
+Run: `cd C:/Claude/f1-race-engineer && pip install flask`
+Expected: installs without error.
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/test_dashboard_server.py
+from telemetry.state import StateTracker
+from dashboard.log import EngineerLog
+from dashboard.server import create_app
+
+
+def test_api_state_returns_expected_shape_and_values():
+    tracker = StateTracker()
+    tracker.update_lap_data(
+        {"last_lap_time_ms": 92104, "current_lap_time_ms": 45230, "sector1_time_ms": 0,
+         "sector2_time_ms": 0, "car_position": 4, "current_lap_num": 12},
+        gap_ahead_ms=812, gap_behind_ms=1240,
+    )
+    tracker.update_car_status(fuel_in_tank=34.6, fuel_remaining_laps=3.2)
+    tracker.update_car_damage(tyres_wear=[42.0, 38.0, 61.0, 58.0])
+    log = EngineerLog()
+    log.add_callout("14:32:07", "Purple lap! New session best.")
+
+    app = create_app(tracker, log)
+    client = app.test_client()
+    response = client.get("/api/state")
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["current_lap_time_ms"] == 45230
+    assert data["car_position"] == 4
+    assert data["gap_ahead_ms"] == 812
+    assert data["tyres_wear"] == [42.0, 38.0, 61.0, 58.0]
+    assert data["pit_rejoin_position"] is None
+    assert data["weather"] is None
+    assert data["log"] == [{"time": "14:32:07", "type": "callout", "text": "Purple lap! New session best."}]
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `pytest tests/test_dashboard_server.py -v`
+Expected: FAIL — `dashboard.server` module not found
+
+- [ ] **Step 4: Write `dashboard/server.py`**
+
+```python
+import os
+from flask import Flask, jsonify, send_from_directory
+
+
+def create_app(state_tracker, engineer_log):
+    app = Flask(__name__, static_folder=os.path.dirname(os.path.abspath(__file__)), static_url_path="")
+
+    @app.route("/api/state")
+    def api_state():
+        state = state_tracker.snapshot()
+        return jsonify({
+            "current_lap_time_ms": state.current_lap_time_ms,
+            "last_lap_time_ms": state.last_lap_time_ms,
+            "best_lap_time_ms": state.best_lap_time_ms,
+            "car_position": state.car_position,
+            "current_lap_num": state.current_lap_num,
+            "gap_ahead_ms": state.gap_ahead_ms,
+            "gap_behind_ms": state.gap_behind_ms,
+            "fuel_in_tank": state.fuel_in_tank,
+            "fuel_remaining_laps": state.fuel_remaining_laps,
+            "tyres_wear": state.tyres_wear,
+            "pit_rejoin_position": None,
+            "weather": None,
+            "log": engineer_log.snapshot(),
+        })
+
+    @app.route("/")
+    def index():
+        return send_from_directory(app.static_folder, "index.html")
+
+    return app
+
+
+def run_dashboard_server(state_tracker, engineer_log, port=5000):
+    app = create_app(state_tracker, engineer_log)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pytest tests/test_dashboard_server.py -v`
+Expected: PASS
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add dashboard/server.py tests/test_dashboard_server.py requirements.txt
+git commit -m "Add dashboard Flask server with /api/state endpoint"
+```
+
+---
+
+### Task 18: Dashboard frontend
+
+**Files:**
+- Create: `C:\Claude\f1-race-engineer\dashboard\index.html`
+- Create: `C:\Claude\f1-race-engineer\dashboard\style.css`
+- Create: `C:\Claude\f1-race-engineer\dashboard\app.js`
+
+**Interfaces:**
+- Consumes: `GET /api/state` (Task 17) — see `docs/superpowers/specs/2026-07-05-f1-race-engineer-dashboard-design.md` for the exact JSON shape
+- No automated test — this is static markup/styling/client JS with no Python to unit test. Verified manually here and end-to-end in Task 20.
+
+- [ ] **Step 1: Write `dashboard/index.html`**
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<title>Race Engineer</title>
+</head>
+<body>
+<div class="grid">
+  <section class="panel telemetry">
+    <div class="panel-header">
+      <span class="dot dot-red"></span>
+      <span class="label">LIVE TELEMETRY</span>
+      <span class="lap-badge">LAP <span id="lapNum">0</span></span>
+    </div>
+    <div class="row-top">
+      <div class="card lap-card">
+        <span class="mini-label">CURRENT LAP</span>
+        <span class="big-num" id="curLap">--:--.---</span>
+        <div class="delta-row">
+          <span class="mini-label">&Delta; PB</span>
+          <span class="delta-num" id="deltaText">--.---</span>
+        </div>
+      </div>
+      <div class="card pos-card">
+        <span class="mini-label">POS</span>
+        <span class="pos-num" id="position">--</span>
+      </div>
+    </div>
+    <div class="row-gaps">
+      <div class="card">
+        <span class="mini-label">GAP AHEAD</span>
+        <div class="gap-num gap-ahead" id="gapAhead">--.---</div>
+      </div>
+      <div class="card">
+        <span class="mini-label">GAP BEHIND</span>
+        <div class="gap-num gap-behind" id="gapBehind">--.---</div>
+      </div>
+    </div>
+    <div class="row-bottom">
+      <div class="card pit-card placeholder" id="pitCard">
+        <span class="mini-label">PIT WINDOW &middot; REJOIN</span>
+        <span class="placeholder-text">Awaiting data</span>
+      </div>
+      <div class="card weather-card placeholder" id="weatherCard">
+        <span class="mini-label">WEATHER</span>
+        <span class="placeholder-text">Awaiting data</span>
+      </div>
+    </div>
+    <div class="row-tyres">
+      <div class="tyre"><span class="mini-label">FL</span><span class="tyre-pct" id="tyreFL">--%</span></div>
+      <div class="tyre"><span class="mini-label">FR</span><span class="tyre-pct" id="tyreFR">--%</span></div>
+      <div class="tyre"><span class="mini-label">RL</span><span class="tyre-pct" id="tyreRL">--%</span></div>
+      <div class="tyre"><span class="mini-label">RR</span><span class="tyre-pct" id="tyreRR">--%</span></div>
+    </div>
+  </section>
+
+  <div class="right-col">
+    <section class="panel radio">
+      <div class="panel-header">
+        <span class="dot dot-green"></span>
+        <span class="label">TEAM RADIO</span>
+      </div>
+      <div class="log" id="log"></div>
+    </section>
+
+    <section class="panel setup placeholder">
+      <div class="panel-header">
+        <span class="dot dot-dim"></span>
+        <span class="label label-dim">CAR SETUP</span>
+      </div>
+      <div class="setup-body">
+        <span class="gear-icon">&#9881;</span>
+        <span class="setup-text">Setup recommendations coming soon</span>
+      </div>
+    </section>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
+```
+
+- [ ] **Step 2: Write `dashboard/style.css`**
+
+```css
+html, body { margin: 0; padding: 0; height: 100%; background: #0a0c0f; overflow: hidden; }
+* { box-sizing: border-box; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #2a3038; border-radius: 3px; }
+@keyframes blip { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+body {
+  height: 100vh; width: 100vw; color: #e8edf2; font-family: 'Rajdhani', sans-serif;
+  display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; padding: 14px;
+}
+
+.panel { background: #101418; border: 1px solid #1c232b; border-radius: 10px; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+.setup.placeholder { background: #0d1013; border: 1px dashed #232b34; padding: 24px; }
+
+.panel-header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #1c232b; padding-bottom: 12px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; }
+.dot-red { background: #e5484d; animation: blip 1.4s ease-in-out infinite; }
+.dot-green { background: #3fb950; }
+.dot-dim { border: 1px solid #3c4551; }
+.label { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 3px; color: #7c8794; font-weight: 500; }
+.label-dim { color: #4a5462; }
+.lap-badge { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 2px; color: #7c8794; }
+
+.card { background: #0a0d10; border: 1px solid #1c232b; border-radius: 8px; padding: 16px 18px; }
+.mini-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 2px; color: #7c8794; }
+
+.row-top { display: grid; grid-template-columns: 1fr auto; gap: 20px; }
+.lap-card { display: flex; flex-direction: column; justify-content: center; }
+.big-num { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 72px; line-height: .9; font-variant-numeric: tabular-nums; }
+.delta-row { display: flex; align-items: baseline; gap: 10px; margin-top: 10px; }
+.delta-num { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 30px; font-variant-numeric: tabular-nums; color: #7c8794; }
+.pos-card { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 150px; padding: 16px 24px; }
+.pos-num { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 96px; line-height: .85; font-variant-numeric: tabular-nums; }
+
+.row-gaps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.gap-num { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 34px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.gap-ahead { color: #f2c94c; }
+.gap-behind { color: #56a3f5; }
+
+.row-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.placeholder-text { display: block; margin-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #4a5462; }
+
+.row-tyres { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.tyre { background: #0a0d10; border: 1px solid #1c232b; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+.tyre-pct { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; }
+.tyre-pct.green { color: #3fb950; }
+.tyre-pct.yellow { color: #f2c94c; }
+.tyre-pct.red { color: #e5484d; }
+
+.right-col { display: grid; grid-template-rows: 1.3fr 1fr; gap: 14px; min-height: 0; }
+.radio { padding: 0; }
+.radio .panel-header { padding: 16px 18px 12px; }
+.log { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.log-entry { border-left: 3px solid #f2c94c; padding: 8px 12px; border-radius: 0 6px 6px 0; background: rgba(242, 201, 76, .05); }
+.log-entry.log-qa { border-left-color: #56a3f5; background: rgba(86, 163, 245, .06); }
+.log-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.log-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #5c6672; }
+.log-tag { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: #f2c94c; }
+.log-entry.log-qa .log-tag { color: #56a3f5; }
+.log-text { font-family: 'Rajdhani', sans-serif; font-size: 16px; line-height: 1.25; color: #dbe2e9; }
+
+.setup-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
+.gear-icon { width: 48px; height: 48px; border-radius: 12px; border: 1px solid #232b34; display: flex; align-items: center; justify-content: center; color: #3c4551; font-size: 26px; }
+.setup-text { font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 22px; color: #5c6672; }
+```
+
+- [ ] **Step 3: Write `dashboard/app.js`**
+
+```javascript
+function fmtLap(ms) {
+  if (!ms) return "--:--.---";
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const mm = ms % 1000;
+  return m + ":" + String(s).padStart(2, "0") + "." + String(mm).padStart(3, "0");
+}
+
+function fmtGap(ms) {
+  if (ms == null) return "--.---";
+  return "+" + (ms / 1000).toFixed(3);
+}
+
+function tyreColorClass(wear) {
+  const life = Math.max(0, Math.round(100 - wear));
+  if (life <= 20) return "red";
+  if (life <= 50) return "yellow";
+  return "green";
+}
+
+function renderLog(entries) {
+  const logEl = document.getElementById("log");
+  logEl.innerHTML = "";
+  for (const e of entries) {
+    const div = document.createElement("div");
+    div.className = "log-entry " + (e.type === "qa" ? "log-qa" : "log-callout");
+    const text = e.type === "qa" && e.q ? '"' + e.q + '" — ' + e.text : e.text;
+    const meta = document.createElement("div");
+    meta.className = "log-meta";
+    meta.innerHTML =
+      '<span class="log-time">' + e.time + '</span>' +
+      '<span class="log-tag">' + (e.type === "qa" ? "Q&A" : "CALLOUT") + '</span>';
+    const textEl = document.createElement("div");
+    textEl.className = "log-text";
+    textEl.textContent = text;
+    div.appendChild(meta);
+    div.appendChild(textEl);
+    logEl.appendChild(div);
+  }
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function poll() {
+  let data;
+  try {
+    const res = await fetch("/api/state", { cache: "no-store" });
+    if (!res.ok) return;
+    data = await res.json();
+  } catch (e) {
+    return; // keep showing last known values on a fetch failure
+  }
+
+  document.getElementById("lapNum").textContent = data.current_lap_num ?? 0;
+  document.getElementById("curLap").textContent = fmtLap(data.current_lap_time_ms);
+
+  const deltaEl = document.getElementById("deltaText");
+  if (data.last_lap_time_ms && data.best_lap_time_ms) {
+    const d = data.last_lap_time_ms - data.best_lap_time_ms;
+    if (d <= 0) {
+      deltaEl.textContent = d === 0 ? "PURPLE" : "-" + (Math.abs(d) / 1000).toFixed(3);
+      deltaEl.style.color = "#b249f8";
+    } else {
+      deltaEl.textContent = "+" + (d / 1000).toFixed(3);
+      deltaEl.style.color = "#e5484d";
+    }
+  }
+
+  document.getElementById("position").textContent = data.car_position ?? "--";
+  document.getElementById("gapAhead").textContent = fmtGap(data.gap_ahead_ms);
+  document.getElementById("gapBehind").textContent = fmtGap(data.gap_behind_ms);
+
+  const wear = data.tyres_wear || [0, 0, 0, 0];
+  const wheelIds = ["tyreFL", "tyreFR", "tyreRL", "tyreRR"];
+  wheelIds.forEach((id, i) => {
+    const el = document.getElementById(id);
+    const life = Math.max(0, Math.round(100 - wear[i]));
+    el.textContent = life + "%";
+    el.className = "tyre-pct " + tyreColorClass(wear[i]);
+  });
+
+  document.getElementById("pitCard").classList.toggle("placeholder", data.pit_rejoin_position == null);
+  document.getElementById("weatherCard").classList.toggle("placeholder", data.weather == null);
+
+  renderLog(data.log || []);
+}
+
+poll();
+setInterval(poll, 500);
+```
+
+- [ ] **Step 4: Manually verify the dashboard renders**
+
+Run: `cd C:/Claude/f1-race-engineer && python -c "
+from telemetry.state import StateTracker
+from dashboard.log import EngineerLog
+from dashboard.server import run_dashboard_server
+t = StateTracker()
+t.update_lap_data({'last_lap_time_ms': 90500, 'current_lap_time_ms': 30000, 'sector1_time_ms': 0, 'sector2_time_ms': 0, 'car_position': 3, 'current_lap_num': 5}, gap_ahead_ms=812, gap_behind_ms=1500)
+t.update_car_status(fuel_in_tank=40.0, fuel_remaining_laps=5.0)
+t.update_car_damage(tyres_wear=[20.0, 25.0, 15.0, 18.0])
+log = EngineerLog()
+log.add_callout('12:00:00', 'Purple lap! New session best.')
+run_dashboard_server(t, log)
+"`
+Expected: open `http://localhost:5000` in a browser — see live-looking telemetry values, tyre percentages color-coded, the log entry in Team Radio, and Pit Window/Weather showing "Awaiting data". Ctrl+C to stop.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add dashboard/index.html dashboard/style.css dashboard/app.js
+git commit -m "Add dashboard frontend: telemetry, team radio log, placeholders"
+```
+
+---
+
+### Task 19: Main orchestrator
 
 **Files:**
 - Create: `C:\Claude\f1-race-engineer\main.py`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1-16
+- Consumes: everything from Tasks 1-18
 
 - [ ] **Step 1: Write `main.py`**
 
 ```python
+import datetime
 import threading
 import time
 from telemetry.state import StateTracker
@@ -1373,11 +1904,16 @@ from voice.phrasing import event_to_line, answer_question
 from voice.tts import speak
 from voice.wakeword import WakeWordListener
 from voice.stt import record_question, transcribe
-from overlay import OverlayWindow
+from dashboard.log import EngineerLog
+from dashboard.server import run_dashboard_server
 import config
 
 
-def run_telemetry_loop(state_tracker, rule_engine, overlay):
+def _now_str():
+    return datetime.datetime.now().strftime("%H:%M:%S")
+
+
+def run_telemetry_loop(state_tracker, rule_engine, engineer_log):
     listener = TelemetryListener(state_tracker, ip=config.UDP_LISTEN_IP, port=config.UDP_LISTEN_PORT)
     threading.Thread(target=listener.start, daemon=True).start()
 
@@ -1389,35 +1925,40 @@ def run_telemetry_loop(state_tracker, rule_engine, overlay):
         events += rule_engine.check_gaps(state)
         for event in events:
             line = event_to_line(event)
-            overlay.show_message(line)
+            engineer_log.add_callout(_now_str(), line)
             speak(line)
         time.sleep(0.5)
 
 
-def on_wake_word(state_tracker, overlay):
+def on_wake_word(state_tracker, engineer_log):
     wav_path = record_question()
     question = transcribe(wav_path)
     if not question:
         return
     state = state_tracker.snapshot()
     answer = answer_question(question, state)
-    overlay.show_message(answer)
+    engineer_log.add_qa(_now_str(), question, answer)
     speak(answer)
 
 
 def main():
     state_tracker = StateTracker()
     rule_engine = RuleEngine()
-    overlay = OverlayWindow()
+    engineer_log = EngineerLog()
 
     threading.Thread(
-        target=run_telemetry_loop, args=(state_tracker, rule_engine, overlay), daemon=True
+        target=run_telemetry_loop, args=(state_tracker, rule_engine, engineer_log), daemon=True
     ).start()
 
-    wake_listener = WakeWordListener(on_wake=lambda: on_wake_word(state_tracker, overlay))
+    threading.Thread(
+        target=run_dashboard_server, args=(state_tracker, engineer_log), daemon=True
+    ).start()
+
+    wake_listener = WakeWordListener(on_wake=lambda: on_wake_word(state_tracker, engineer_log))
     wake_listener.start()
 
-    overlay.run()
+    while True:
+        time.sleep(1)
 
 
 if __name__ == "__main__":
@@ -1428,12 +1969,12 @@ if __name__ == "__main__":
 
 ```bash
 git add main.py
-git commit -m "Add main orchestrator wiring telemetry, rules, and voice"
+git commit -m "Add main orchestrator wiring telemetry, rules, voice, and dashboard"
 ```
 
 ---
 
-### Task 18: End-to-end manual verification (live game)
+### Task 20: End-to-end manual verification (live game)
 
 No new files — this is a manual test pass with the real game before calling Phase 1 done.
 
@@ -1443,23 +1984,23 @@ On the game PC: F1 25 → Telemetry Settings → UDP Telemetry On, IP `192.168.0
 
 - [ ] **Step 2: Start the app on the laptop**
 
-Run: `cd C:/Claude/f1-race-engineer && $env:ANTHROPIC_API_KEY = "<your key>"; python main.py`
-Expected: overlay window appears, console shows no `[telemetry] no packets received` warning once you're in a session on track.
+Run: `cd C:/Claude/f1-race-engineer && python main.py`
+Expected: console shows no `[telemetry] no packets received` warning once you're in a session on track. Open `http://localhost:5000` in a browser and pin the tab.
 
 - [ ] **Step 3: Drive a few laps in Time Trial, verify each Phase 1 trigger fires**
 
-- Beat your best lap time → hear + see a purple-lap callout.
-- Run tyres down (long run or high wear setting) → hear a tyre-wear callout as remaining % crosses 30/15/5.
+- Beat your best lap time → hear + see a purple-lap callout, delta shows PURPLE on the dashboard.
+- Run tyres down (long run or high wear setting) → hear a tyre-wear callout as remaining % crosses 30/15/5, dashboard tyre percentages color-shift toward red.
 - Let fuel run low (or check in a race with limited fuel) → hear a fuel-critical callout under 2 laps remaining.
-- In a race with AI cars, close to within ~1 second of the car ahead/behind → hear a gap-closing callout.
+- In a race with AI cars, close to within ~1 second of the car ahead/behind → hear a gap-closing callout, dashboard gap readout updates live.
 
 - [ ] **Step 4: Verify wake-word Q&A**
 
-Say "hey jarvis" while driving, then ask a question ("how much fuel do I have left?"). Expected: overlay shows the transcribed answer, hear it spoken back.
+Say "hey jarvis" while driving, then ask a question ("how much fuel do I have left?"). Expected: dashboard's Team Radio panel shows the question + answer as a Q&A entry, hear it spoken back.
 
-- [ ] **Step 5: Verify fallback behavior**
+- [ ] **Step 5: Verify dashboard placeholders and fallback behavior**
 
-Temporarily set an invalid `ANTHROPIC_API_KEY` and trigger an event — expected: still hear/see the canned-template line, app doesn't crash. Restore the correct key afterward.
+Confirm Pit Window and Weather panels show "Awaiting data" (never fabricated numbers) throughout the session. Temporarily rename/break one of the 4 provider API keys (e.g. unset `OPENROUTER_API_KEY`) and trigger an event — expected: the chain falls through to the next provider (or the canned-template line if all 4 fail), app doesn't crash. Restore the key afterward.
 
 - [ ] **Step 6: Commit any fixes found during manual testing, then tag Phase 1 done**
 
@@ -1472,6 +2013,7 @@ git commit -m "Phase 1 manual verification pass"
 
 ## Self-Review Notes
 
-- **Spec coverage:** all 3 Phase 1 triggers (lap delta, tyre/fuel, gap) implemented (Tasks 9-11); wake-word Q&A implemented (Tasks 14-15, 17); voice output implemented (Task 13); overlay implemented (Task 16); error handling — no-telemetry warning (Task 8), Claude API fallback (Task 12), mic/STT failure is naturally a no-op in `on_wake_word` if `transcribe` returns empty text.
-- **Known scope cut carried from Global Constraints:** lap/sector trigger is lap-level only, not live per-sector purple/green — flagged, not silently dropped.
-- **Struct byte layouts:** verified against a real, maintained F1 25 telemetry parser repository rather than assumed from memory — reduces (but doesn't eliminate) risk of a field mismatch; Task 18 catches any remaining mismatch against the live game.
+- **Spec coverage:** all 3 Phase 1 triggers (lap delta, tyre/fuel, gap) implemented (Tasks 9-11); wake-word Q&A implemented (Tasks 14-15, 19); voice output implemented (Task 13); dashboard implemented (Tasks 16-18) per `docs/superpowers/specs/2026-07-05-f1-race-engineer-dashboard-design.md`; error handling — no-telemetry warning (Task 8), 4-provider LLM fallback + canned-template final fallback (Task 12), mic/STT failure is naturally a no-op in `on_wake_word` if `transcribe` returns empty text.
+- **Known scope cut carried from Global Constraints:** lap/sector trigger is lap-level only, not live per-sector purple/green — flagged, not silently dropped. Dashboard's Pit Window and Weather panels ship as honest placeholders, real data is Phase 2 backlog.
+- **Struct byte layouts:** verified against a real, maintained F1 25 telemetry parser repository rather than assumed from memory — reduces (but doesn't eliminate) risk of a field mismatch; Task 20 catches any remaining mismatch against the live game.
+- **LLM provider chain:** each provider function (`_try_openrouter`, `_try_nvidia`, `_try_cerebras`, `_try_mistral`) is a thin, individually-simple wrapper: the fallback/skip-on-failure logic is unit-tested (Task 12), the real network calls are manually verified (Task 12 Step 5, Task 20).
