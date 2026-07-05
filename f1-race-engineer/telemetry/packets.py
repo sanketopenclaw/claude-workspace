@@ -17,3 +17,42 @@ def parse_header(data):
         "packet_id": packet_id,
         "player_car_index": player_car_index,
     }
+
+
+LAP_DATA_FORMAT = "<IIHBHBHBHBfffBBBBBBBBBBBBBBBHHBfB"
+LAP_DATA_SIZE = struct.calcsize(LAP_DATA_FORMAT)  # 57 bytes
+NUM_CARS = 22
+
+
+def _combine_delta(ms_part, minutes_part):
+    return minutes_part * 60000 + ms_part
+
+
+def parse_lap_data_packet(data, player_car_index):
+    cars = []
+    offset = HEADER_SIZE
+    for _ in range(NUM_CARS):
+        f = struct.unpack_from(LAP_DATA_FORMAT, data, offset)
+        cars.append({
+            "last_lap_time_ms": f[0],
+            "current_lap_time_ms": f[1],
+            "sector1_time_ms": _combine_delta(f[2], f[3]),
+            "sector2_time_ms": _combine_delta(f[4], f[5]),
+            "delta_to_car_in_front_ms": _combine_delta(f[6], f[7]),
+            "delta_to_race_leader_ms": _combine_delta(f[8], f[9]),
+            "car_position": f[13],
+            "current_lap_num": f[14],
+        })
+        offset += LAP_DATA_SIZE
+
+    my_lap = cars[player_car_index]
+    gap_ahead_ms = my_lap["delta_to_car_in_front_ms"]
+
+    gap_behind_ms = None
+    my_position = my_lap["car_position"]
+    for car in cars:
+        if car["car_position"] == my_position + 1:
+            gap_behind_ms = car["delta_to_car_in_front_ms"]
+            break
+
+    return my_lap, gap_ahead_ms, gap_behind_ms
