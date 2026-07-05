@@ -44,8 +44,14 @@ not marked done is still just an idea.
 
 ## Setup (Phase 3)
 
-- [ ] Driving-style profiler + track-aware setup recommender
-- [ ] Multi-track setup library (save/reuse good setups per track)
+- [x] Driving-style profiler + track-aware setup recommender —
+  **simplified**: `check_tyre_wear_imbalance` gives an understeer/oversteer
+  hint from front-vs-rear tyre wear; `check_setup_recommendation` surfaces a
+  saved best-setup reference per track. A full driving-style classifier from
+  raw throttle/brake/steering inputs would need the CarTelemetryData packet,
+  which nothing else in the project needs — not built.
+- [x] Multi-track setup library (`rules/setup_library.py` — JSON file keyed
+  by track_id, saves the setup from each new personal best)
 
 ## Race awareness
 
