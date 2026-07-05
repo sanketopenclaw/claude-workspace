@@ -44,8 +44,8 @@ class StateTracker:
 
     def update_car_damage(self, tyres_wear):
         with self._lock:
-            self._state.tyres_wear = tyres_wear
+            self._state.tyres_wear = list(tyres_wear)
 
     def snapshot(self):
         with self._lock:
-            return dataclasses.replace(self._state)
+            return dataclasses.replace(self._state, tyres_wear=list(self._state.tyres_wear))
