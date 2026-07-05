@@ -50,3 +50,31 @@ def test_parse_lap_data_packet_extracts_player_car_and_gaps():
     assert my_lap["current_lap_num"] == 3
     assert gap_ahead_ms == 0
     assert gap_behind_ms == 750
+
+
+def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3):
+    return struct.pack(
+        packets.CAR_STATUS_FORMAT,
+        0, 0, 1, 50, 0,
+        fuel_in_tank, 110.0, fuel_remaining_laps,
+        15000, 4000,
+        8, 1, 1500,
+        16, 16, 5,
+        0,
+        500.0, 300.0, 4000000.0,
+        0,
+        100.0, 50.0, 150.0,
+        0,
+    )
+
+
+def test_parse_car_status_packet_extracts_fuel_for_player_car():
+    header = _build_header(packet_id=7, player_car_index=2)
+    cars = [_build_car_status_car() for _ in range(22)]
+    cars[2] = _build_car_status_car(fuel_in_tank=30.0, fuel_remaining_laps=3.0)
+    data = header + b"".join(cars)
+
+    fuel_in_tank, fuel_remaining_laps = packets.parse_car_status_packet(data, player_car_index=2)
+
+    assert fuel_in_tank == 30.0
+    assert fuel_remaining_laps == 3.0

@@ -56,3 +56,15 @@ def parse_lap_data_packet(data, player_car_index):
             break
 
     return my_lap, gap_ahead_ms, gap_behind_ms
+
+
+CAR_STATUS_FORMAT = "<BBBBBfffHHBBHBBBbfffBfffB"
+CAR_STATUS_SIZE = struct.calcsize(CAR_STATUS_FORMAT)  # 55 bytes
+
+
+def parse_car_status_packet(data, player_car_index):
+    offset = HEADER_SIZE + player_car_index * CAR_STATUS_SIZE
+    f = struct.unpack_from(CAR_STATUS_FORMAT, data, offset)
+    fuel_in_tank = f[5]
+    fuel_remaining_laps = f[7]
+    return fuel_in_tank, fuel_remaining_laps
