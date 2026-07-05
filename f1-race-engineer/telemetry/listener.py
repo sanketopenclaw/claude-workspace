@@ -1,4 +1,5 @@
 import socket
+import struct
 import time
 from telemetry import packets
 
@@ -43,15 +44,18 @@ class TelemetryListener:
             self._sock.close()
 
     def _dispatch(self, data):
-        header = packets.parse_header(data)
-        player_car_index = header["player_car_index"]
-        packet_id = header["packet_id"]
-        if packet_id == PACKET_ID_LAP_DATA:
-            my_lap, gap_ahead_ms, gap_behind_ms = packets.parse_lap_data_packet(data, player_car_index)
-            self.state_tracker.update_lap_data(my_lap, gap_ahead_ms, gap_behind_ms)
-        elif packet_id == PACKET_ID_CAR_STATUS:
-            fuel_in_tank, fuel_remaining_laps = packets.parse_car_status_packet(data, player_car_index)
-            self.state_tracker.update_car_status(fuel_in_tank, fuel_remaining_laps)
-        elif packet_id == PACKET_ID_CAR_DAMAGE:
-            tyres_wear = packets.parse_car_damage_packet(data, player_car_index)
-            self.state_tracker.update_car_damage(tyres_wear)
+        try:
+            header = packets.parse_header(data)
+            player_car_index = header["player_car_index"]
+            packet_id = header["packet_id"]
+            if packet_id == PACKET_ID_LAP_DATA:
+                my_lap, gap_ahead_ms, gap_behind_ms = packets.parse_lap_data_packet(data, player_car_index)
+                self.state_tracker.update_lap_data(my_lap, gap_ahead_ms, gap_behind_ms)
+            elif packet_id == PACKET_ID_CAR_STATUS:
+                fuel_in_tank, fuel_remaining_laps = packets.parse_car_status_packet(data, player_car_index)
+                self.state_tracker.update_car_status(fuel_in_tank, fuel_remaining_laps)
+            elif packet_id == PACKET_ID_CAR_DAMAGE:
+                tyres_wear = packets.parse_car_damage_packet(data, player_car_index)
+                self.state_tracker.update_car_damage(tyres_wear)
+        except (struct.error, IndexError) as e:
+            print(f"[telemetry] malformed packet ignored: {e}")
