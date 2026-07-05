@@ -35,6 +35,10 @@ class State:
     total_laps: int = None
     pit_stop_window_ideal_lap: int = None
     pit_stop_window_latest_lap: int = None
+    gap_to_leader_ms: int = None
+    leaderboard: list = dataclasses.field(default_factory=list)
+    participant_names: dict = dataclasses.field(default_factory=dict)
+    session_type: int = None
 
 
 class StateTracker:
@@ -42,7 +46,7 @@ class StateTracker:
         self._lock = threading.Lock()
         self._state = State()
 
-    def update_lap_data(self, my_lap, gap_ahead_ms, gap_behind_ms):
+    def update_lap_data(self, my_lap, gap_ahead_ms, gap_behind_ms, all_cars=None):
         with self._lock:
             s = self._state
             s.last_lap_time_ms = my_lap["last_lap_time_ms"]
@@ -53,8 +57,23 @@ class StateTracker:
             s.current_lap_num = my_lap["current_lap_num"]
             s.gap_ahead_ms = gap_ahead_ms
             s.gap_behind_ms = gap_behind_ms
+            s.gap_to_leader_ms = my_lap["delta_to_race_leader_ms"]
             if s.last_lap_time_ms and (s.best_lap_time_ms is None or s.last_lap_time_ms < s.best_lap_time_ms):
                 s.best_lap_time_ms = s.last_lap_time_ms
+            if all_cars is not None:
+                s.leaderboard = sorted(
+                    (
+                        {
+                            "car_index": i,
+                            "car_position": car["car_position"],
+                            "gap_to_leader_ms": car["delta_to_race_leader_ms"],
+                            "current_lap_num": car["current_lap_num"],
+                        }
+                        for i, car in enumerate(all_cars)
+                        if car["car_position"] > 0
+                    ),
+                    key=lambda entry: entry["car_position"],
+                )
 
     def update_car_status(self, car_status):
         with self._lock:
@@ -82,6 +101,7 @@ class StateTracker:
             s.track_temperature = session["track_temperature"]
             s.air_temperature = session["air_temperature"]
             s.safety_car_status = session["safety_car_status"]
+            s.session_type = session["session_type"]
             s.total_laps = session["total_laps"]
             s.pit_stop_window_ideal_lap = session["pit_stop_window_ideal_lap"]
             s.pit_stop_window_latest_lap = session["pit_stop_window_latest_lap"]
@@ -109,6 +129,10 @@ class StateTracker:
         with self._lock:
             setattr(self._state, field, details)
 
+    def update_participants(self, num_active_cars, participants):
+        with self._lock:
+            self._state.participant_names = {i: p["name"] for i, p in enumerate(participants)}
+
     def snapshot(self):
         with self._lock:
             return dataclasses.replace(
@@ -116,4 +140,6 @@ class StateTracker:
                 tyres_wear=list(self._state.tyres_wear),
                 weather_forecast=list(self._state.weather_forecast),
                 damage_components=dict(self._state.damage_components),
+                leaderboard=list(self._state.leaderboard),
+                participant_names=dict(self._state.participant_names),
             )

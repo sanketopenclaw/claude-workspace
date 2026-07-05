@@ -22,6 +22,54 @@ def test_lap_completion_fires_purple_event_on_new_best():
     assert events4 == []  # slower lap, no event
 
 
+def test_lap_completion_fires_gap_to_leader_only_in_qualifying():
+    engine = RuleEngine()
+    race_lap1 = State(current_lap_num=1, session_type=10, gap_to_leader_ms=5000)
+    race_lap2 = State(current_lap_num=2, session_type=10, gap_to_leader_ms=4800)
+
+    engine.check_lap_completion(race_lap1)
+    events_race = engine.check_lap_completion(race_lap2)
+
+    assert events_race == []  # session_type 10 = Race, not qualifying - no noise
+
+
+def test_lap_completion_fires_gap_to_leader_in_qualifying():
+    engine = RuleEngine()
+    q1_lap1 = State(current_lap_num=1, session_type=6, gap_to_leader_ms=5000)
+    q1_lap2 = State(current_lap_num=2, session_type=6, gap_to_leader_ms=350)
+    q1_lap3_on_pole = State(current_lap_num=3, session_type=6, gap_to_leader_ms=0)
+
+    engine.check_lap_completion(q1_lap1)
+    events_gap = engine.check_lap_completion(q1_lap2)
+    events_pole = engine.check_lap_completion(q1_lap3_on_pole)
+
+    assert len(events_gap) == 1
+    assert events_gap[0].kind == "gap_to_leader"
+    assert events_gap[0].data["gap_to_leader_ms"] == 350
+    assert len(events_pole) == 1
+    assert events_pole[0].kind == "provisional_pole"
+
+
+def test_check_retirement_fires_once_with_rival_name():
+    engine = RuleEngine()
+    state = State(
+        last_retirement={"vehicle_idx": 7, "reason": 3},
+        participant_names={7: "L. Rival"},
+    )
+    same_state = State(
+        last_retirement={"vehicle_idx": 7, "reason": 3},
+        participant_names={7: "L. Rival"},
+    )
+
+    events = engine.check_retirement(state)
+    events_repeat = engine.check_retirement(same_state)
+
+    assert len(events) == 1
+    assert events[0].kind == "rival_retired"
+    assert events[0].data["name"] == "L. Rival"
+    assert events_repeat == []
+
+
 def test_tyre_wear_fires_once_per_threshold():
     engine = RuleEngine()
     state = State(tyres_wear=[65.0, 60.0, 55.0, 50.0], fuel_remaining_laps=5.0)  # worst = 65% worn -> 35% remaining

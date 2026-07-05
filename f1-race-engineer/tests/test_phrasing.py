@@ -64,6 +64,11 @@ def test_canned_line_for_pit_window_open():
     assert phrasing._canned_line(event) == "Pit window open, box this lap if you can."
 
 
+def test_canned_line_for_rival_retired():
+    event = Event("rival_retired", {"vehicle_idx": 7, "name": "L. Rival"})
+    assert phrasing._canned_line(event) == "L. Rival is out of the session."
+
+
 def test_answer_question_falls_back_to_canned_line_when_all_providers_fail(monkeypatch):
     from telemetry.state import State
 

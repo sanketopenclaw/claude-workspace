@@ -23,6 +23,9 @@ CANNED_LINES = {
     "ers_conserve": "ERS low, ease off deployment.",
     "pit_window_open": "Pit window open, box this lap if you can.",
     "pit_window_closing": "Last chance to pit, window closing.",
+    "gap_to_leader": "Gap to pole, {gap_to_leader_ms} milliseconds.",
+    "provisional_pole": "Provisional pole! Nice lap.",
+    "rival_retired": "{name} is out of the session.",
 }
 
 FLAG_NAMES = {0: "no", 1: "green", 2: "blue", 3: "yellow"}

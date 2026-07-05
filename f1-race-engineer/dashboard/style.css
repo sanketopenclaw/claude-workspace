@@ -52,7 +52,15 @@ body {
 .tyre-pct.yellow { color: #f2c94c; }
 .tyre-pct.red { color: #e5484d; }
 
-.right-col { display: grid; grid-template-rows: 1.3fr 1fr; gap: 14px; min-height: 0; }
+.right-col { display: grid; grid-template-rows: 1.1fr 0.9fr 0.8fr; gap: 14px; min-height: 0; }
+.leaderboard { padding: 0; }
+.leaderboard .panel-header { padding: 16px 18px 12px; }
+.board { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 16px 14px; display: flex; flex-direction: column; gap: 2px; }
+.board-row { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1c232b; }
+.board-row.board-row-player { background: rgba(242, 201, 76, .06); border-radius: 6px; padding-left: 6px; }
+.board-pos { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; color: #7c8794; }
+.board-name { font-family: 'Rajdhani', sans-serif; font-size: 15px; color: #dbe2e9; }
+.board-gap { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #7c8794; font-variant-numeric: tabular-nums; }
 .radio { padding: 0; }
 .radio .panel-header { padding: 16px 18px 12px; }
 .log { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }

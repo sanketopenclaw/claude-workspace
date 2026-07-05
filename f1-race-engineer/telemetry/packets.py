@@ -55,7 +55,7 @@ def parse_lap_data_packet(data, player_car_index):
             gap_behind_ms = car["delta_to_car_in_front_ms"]
             break
 
-    return my_lap, gap_ahead_ms, gap_behind_ms
+    return my_lap, gap_ahead_ms, gap_behind_ms, cars
 
 
 CAR_STATUS_FORMAT = "<BBBBBfffHHBBHBBBbfffBffffB"
@@ -294,3 +294,28 @@ def parse_event_packet(data):
         return event_code, None
     details, _ = _unpack_spec(spec, data, offset)
     return event_code, details
+
+
+# ---------------------------------------------------------------------------
+# Participants packet (id 4) — only used for driver names on the leaderboard;
+# livery/platform/nationality fields parsed but not surfaced anywhere yet.
+# ---------------------------------------------------------------------------
+
+PARTICIPANT_NAME_LEN = 32
+PARTICIPANT_SPEC = [
+    ("ai_controlled", "B"), ("driver_id", "H"), ("network_id", "H"), ("team_id", "H"),
+    ("my_team", "B"), ("race_number", "B"), ("nationality", "B"),
+    ("name", f"{PARTICIPANT_NAME_LEN}s"),
+    ("your_telemetry", "B"), ("show_online_names", "B"), ("tech_level", "H"),
+    ("platform", "B"), ("num_colours", "B"), ("livery_colours", "12s"),
+]
+
+
+def parse_participants_packet(data):
+    offset = HEADER_SIZE
+    num_active_cars = struct.unpack_from("<B", data, offset)[0]
+    offset += 1
+    participants, _ = _unpack_array(PARTICIPANT_SPEC, data, offset, NUM_CARS)
+    for participant in participants:
+        participant["name"] = participant["name"].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+    return num_active_cars, participants[:num_active_cars]

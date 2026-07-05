@@ -1,3 +1,4 @@
+import struct
 from telemetry import packets
 from telemetry.listener import TelemetryListener
 from telemetry.state import StateTracker
@@ -7,7 +8,7 @@ from dashboard.server import create_app
 from voice import phrasing
 from tests.test_packets import (
     _build_header, _build_lap_data_car, _build_car_status_car, _build_car_damage_car,
-    _build_session_packet, _pack_spec,
+    _build_session_packet, _pack_spec, _build_participant,
 )
 
 PLAYER_INDEX = 0
@@ -55,6 +56,19 @@ def _safety_car_event_packet():
     return header + b"SCAR" + payload
 
 
+def _retirement_event_packet(vehicle_idx):
+    header = _build_header(packet_id=3, player_car_index=PLAYER_INDEX)
+    payload = _pack_spec(packets.EVENT_DETAIL_SPECS["RTMT"], {"vehicle_idx": vehicle_idx, "reason": 3})
+    return header + b"RTMT" + payload
+
+
+def _participants_packet():
+    header = _build_header(packet_id=4, player_car_index=PLAYER_INDEX)
+    participants = [_build_participant(name=f"Driver {i}") for i in range(packets.NUM_CARS)]
+    participants[7] = _build_participant(name="L. Rival")
+    return header + struct.pack("<B", packets.NUM_CARS) + b"".join(participants)
+
+
 def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     monkeypatch.setattr(phrasing, "PROVIDER_CHAIN", [])  # force canned lines, no real API calls
 
@@ -69,6 +83,8 @@ def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     listener._dispatch(_session_packet())
     listener._dispatch(_penalty_event_packet())
     listener._dispatch(_safety_car_event_packet())
+    listener._dispatch(_participants_packet())
+    listener._dispatch(_retirement_event_packet(vehicle_idx=7))
 
     state = state_tracker.snapshot()
     assert state.weather == 4
@@ -76,6 +92,8 @@ def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     assert state.last_penalty["vehicle_idx"] == 0
     assert state.last_penalty["other_vehicle_idx"] == 3
     assert state.flag_status == 3
+    assert state.participant_names[7] == "L. Rival"
+    assert len(state.leaderboard) >= 2
 
     events = (
         rule_engine.check_tyre_and_fuel(state)
@@ -84,12 +102,15 @@ def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
         + rule_engine.check_safety_car(state)
         + rule_engine.check_weather_forecast(state)
         + rule_engine.check_penalty(state)
+        + rule_engine.check_retirement(state)
     )
     kinds = {e.kind for e in events}
     assert kinds == {
         "tyre_wear", "fuel_critical", "gap_closing_ahead", "gap_closing_behind",
-        "flag_change", "safety_car", "weather_forecast", "penalty",
+        "flag_change", "safety_car", "weather_forecast", "penalty", "rival_retired",
     }
+    retirement_event = next(e for e in events if e.kind == "rival_retired")
+    assert retirement_event.data["name"] == "L. Rival"
 
     for event in events:
         line = phrasing.event_to_line(event)

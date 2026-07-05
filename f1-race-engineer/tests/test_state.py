@@ -5,12 +5,12 @@ def test_update_lap_data_tracks_best_lap_time():
     tracker = StateTracker()
     tracker.update_lap_data(
         {"last_lap_time_ms": 0, "current_lap_time_ms": 20000, "sector1_time_ms": 0,
-         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 1},
+         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 1, "delta_to_race_leader_ms": 5000},
         gap_ahead_ms=1000, gap_behind_ms=2000,
     )
     tracker.update_lap_data(
         {"last_lap_time_ms": 92000, "current_lap_time_ms": 5000, "sector1_time_ms": 0,
-         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 2},
+         "sector2_time_ms": 0, "car_position": 3, "current_lap_num": 2, "delta_to_race_leader_ms": 4800},
         gap_ahead_ms=900, gap_behind_ms=2100,
     )
 
@@ -57,6 +57,7 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
         "track_temperature": 34,
         "air_temperature": 22,
         "safety_car_status": 0,
+        "session_type": 10,
         "total_laps": 50,
         "pit_stop_window_ideal_lap": 22,
         "pit_stop_window_latest_lap": 28,
@@ -76,6 +77,7 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
     assert snapshot.track_temperature == 34
     assert snapshot.air_temperature == 22
     assert snapshot.safety_car_status == 0
+    assert snapshot.session_type == 10
     assert snapshot.total_laps == 50
     assert snapshot.pit_stop_window_ideal_lap == 22
     assert snapshot.pit_stop_window_latest_lap == 28
@@ -101,3 +103,32 @@ def test_update_event_routes_backlog_relevant_codes_to_typed_fields():
     assert snapshot.last_collision == {"vehicle1_idx": 2, "vehicle2_idx": 5, "severity": 1}
     assert snapshot.last_overtake == {"overtaking_vehicle_idx": 4, "being_overtaken_vehicle_idx": 6}
     assert snapshot.last_retirement == {"vehicle_idx": 7, "reason": 3}
+
+
+def test_update_lap_data_builds_leaderboard_sorted_by_position():
+    tracker = StateTracker()
+    all_cars = [
+        {"car_position": 2, "delta_to_race_leader_ms": 500, "current_lap_num": 4},
+        {"car_position": 1, "delta_to_race_leader_ms": 0, "current_lap_num": 4},
+        {"car_position": 0, "delta_to_race_leader_ms": 0, "current_lap_num": 0},  # inactive slot, filtered out
+    ]
+    tracker.update_lap_data(
+        {"last_lap_time_ms": 0, "current_lap_time_ms": 0, "sector1_time_ms": 0, "sector2_time_ms": 0,
+         "car_position": 2, "current_lap_num": 4, "delta_to_race_leader_ms": 500},
+        gap_ahead_ms=500, gap_behind_ms=None, all_cars=all_cars,
+    )
+
+    leaderboard = tracker.snapshot().leaderboard
+
+    assert len(leaderboard) == 2
+    assert leaderboard[0]["car_position"] == 1
+    assert leaderboard[1]["car_position"] == 2
+
+
+def test_update_participants_populates_names():
+    tracker = StateTracker()
+    tracker.update_participants(2, [{"name": "L. Rival"}, {"name": "M. Teammate"}])
+
+    names = tracker.snapshot().participant_names
+
+    assert names == {0: "L. Rival", 1: "M. Teammate"}

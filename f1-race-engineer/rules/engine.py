@@ -11,6 +11,10 @@ DAMAGE_FAULT_COMPONENTS = {"drs_fault", "ers_fault", "engine_blown", "engine_sei
 DAMAGE_DELTA_THRESHOLD = 5
 FUEL_BURN_WINDOW = 3
 ERS_LOW_THRESHOLD = 500000.0
+# Session type enum (standard F1 UDP appendix, stable across F1 22-25): 5=Q1, 6=Q2,
+# 7=Q3, 8=Short Q, 9=OSQ. Gap-to-pole callout only makes sense in qualifying -
+# firing it every race lap would just be noise (gap_ahead/gap_behind cover races).
+QUALIFYING_SESSION_TYPES = {5, 6, 7, 8, 9}
 
 
 class RuleEngine:
@@ -35,6 +39,7 @@ class RuleEngine:
         self._fired_ers_warning = False
         self._fired_pit_window_ideal = False
         self._fired_pit_window_latest = False
+        self._last_retirement_seen = None
 
     def check_lap_completion(self, state):
         events = []
@@ -49,6 +54,11 @@ class RuleEngine:
                 and state.last_lap_time_ms < self._prev_best_lap_time_ms
             ):
                 events.append(Event("lap_purple", {"lap_time_ms": state.last_lap_time_ms}))
+            if state.session_type in QUALIFYING_SESSION_TYPES and state.gap_to_leader_ms is not None:
+                if state.gap_to_leader_ms == 0:
+                    events.append(Event("provisional_pole", {}))
+                else:
+                    events.append(Event("gap_to_leader", {"gap_to_leader_ms": state.gap_to_leader_ms}))
             self._fired_tyre_thresholds = set()
         self._last_lap_num_seen = state.current_lap_num
         self._prev_best_lap_time_ms = state.best_lap_time_ms
@@ -237,4 +247,15 @@ class RuleEngine:
         ):
             events.append(Event("pit_window_closing", {"lap": lap_num}))
             self._fired_pit_window_latest = True
+        return events
+
+    def check_retirement(self, state):
+        events = []
+        retirement = state.last_retirement
+        if retirement is not None and retirement != self._last_retirement_seen:
+            vehicle_idx = retirement.get("vehicle_idx")
+            name = state.participant_names.get(vehicle_idx, "a rival")
+            events.append(Event("rival_retired", {"vehicle_idx": vehicle_idx, "name": name}))
+        if retirement is not None:
+            self._last_retirement_seen = retirement
         return events

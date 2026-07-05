@@ -37,6 +37,7 @@ def run_telemetry_loop(state_tracker, rule_engine, engineer_log):
         events += rule_engine.check_fuel_strategy(state)
         events += rule_engine.check_ers(state)
         events += rule_engine.check_pit_window(state)
+        events += rule_engine.check_retirement(state)
         for event in events:
             line = event_to_line(event)
             engineer_log.add_callout(_now_str(), line)

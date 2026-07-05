@@ -21,6 +21,10 @@ def create_app(state_tracker, engineer_log):
             "tyres_wear": state.tyres_wear,
             "pit_rejoin_position": None,
             "weather": None,
+            "leaderboard": [
+                {**entry, "name": state.participant_names.get(entry["car_index"], f"Car {entry['car_index']}")}
+                for entry in state.leaderboard
+            ],
             "log": engineer_log.snapshot(),
         })
 

@@ -44,12 +44,14 @@ def test_parse_lap_data_packet_extracts_player_car_and_gaps():
     cars = [car_p2_behind_player, car_player] + filler_cars
     data = header + b"".join(cars) + b"\xff\xff"
 
-    my_lap, gap_ahead_ms, gap_behind_ms = packets.parse_lap_data_packet(data, player_car_index=1)
+    my_lap, gap_ahead_ms, gap_behind_ms, all_cars = packets.parse_lap_data_packet(data, player_car_index=1)
 
     assert my_lap["car_position"] == 1
     assert my_lap["current_lap_num"] == 3
     assert gap_ahead_ms == 0
     assert gap_behind_ms == 750
+    assert len(all_cars) == packets.NUM_CARS
+    assert all_cars[1]["car_position"] == 1
 
 
 def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3, vehicle_fia_flags=0,
@@ -258,3 +260,25 @@ def test_parse_event_packet_no_payload_code_returns_none_details():
 
     assert event_code == "CHQF"
     assert details is None
+
+
+def _build_participant(name="Driver", ai_controlled=0, team_id=0):
+    values = {name_: 0 for name_, _ in packets.PARTICIPANT_SPEC}
+    values["ai_controlled"] = ai_controlled
+    values["team_id"] = team_id
+    values["name"] = name.encode("utf-8").ljust(packets.PARTICIPANT_NAME_LEN, b"\x00")
+    values["livery_colours"] = b"\x00" * 12
+    return _pack_spec(packets.PARTICIPANT_SPEC, values)
+
+
+def test_parse_participants_packet_extracts_names_and_trims_to_active_count():
+    header = _build_header(packet_id=4)
+    participants = [_build_participant(name=f"Driver {i}") for i in range(packets.NUM_CARS)]
+    participants[3] = _build_participant(name="M. Verstappen")
+    data = header + struct.pack("<B", 4) + b"".join(participants)
+
+    num_active_cars, parsed = packets.parse_participants_packet(data)
+
+    assert num_active_cars == 4
+    assert len(parsed) == 4
+    assert parsed[3]["name"] == "M. Verstappen"

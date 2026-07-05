@@ -45,6 +45,28 @@ function renderLog(entries) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+function renderLeaderboard(entries, playerPosition) {
+  const boardEl = document.getElementById("leaderboard");
+  boardEl.innerHTML = "";
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "board-row" + (entry.car_position === playerPosition ? " board-row-player" : "");
+    const posEl = document.createElement("span");
+    posEl.className = "board-pos";
+    posEl.textContent = "P" + entry.car_position;
+    const nameEl = document.createElement("span");
+    nameEl.className = "board-name";
+    nameEl.textContent = entry.name;
+    const gapEl = document.createElement("span");
+    gapEl.className = "board-gap";
+    gapEl.textContent = entry.gap_to_leader_ms === 0 ? "LEADER" : fmtGap(entry.gap_to_leader_ms);
+    row.appendChild(posEl);
+    row.appendChild(nameEl);
+    row.appendChild(gapEl);
+    boardEl.appendChild(row);
+  }
+}
+
 async function poll() {
   let data;
   try {
@@ -109,6 +131,7 @@ async function poll() {
   }
   document.getElementById("weatherCard").classList.toggle("placeholder", data.weather == null);
 
+  renderLeaderboard(data.leaderboard || [], data.car_position);
   renderLog(data.log || []);
 }
 
