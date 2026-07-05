@@ -78,3 +78,19 @@ def test_parse_car_status_packet_extracts_fuel_for_player_car():
 
     assert fuel_in_tank == 30.0
     assert fuel_remaining_laps == 3.0
+
+
+def _build_car_damage_car(tyres_wear=(10.0, 12.0, 8.0, 9.0)):
+    zeros_30 = (0,) * 30
+    return struct.pack(packets.CAR_DAMAGE_FORMAT, *tyres_wear, *zeros_30)
+
+
+def test_parse_car_damage_packet_extracts_tyre_wear_for_player_car():
+    header = _build_header(packet_id=10, player_car_index=5)
+    cars = [_build_car_damage_car() for _ in range(22)]
+    cars[5] = _build_car_damage_car(tyres_wear=(40.0, 42.0, 38.0, 39.0))
+    data = header + b"".join(cars)
+
+    tyres_wear = packets.parse_car_damage_packet(data, player_car_index=5)
+
+    assert tyres_wear == [40.0, 42.0, 38.0, 39.0]
