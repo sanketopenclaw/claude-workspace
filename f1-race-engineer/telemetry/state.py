@@ -29,6 +29,12 @@ class State:
     flag_status: int = None
     player_car_index: int = None
     damage_components: dict = dataclasses.field(default_factory=dict)
+    fuel_mix: int = None
+    ers_deploy_mode: int = None
+    ers_store_energy: float = None
+    total_laps: int = None
+    pit_stop_window_ideal_lap: int = None
+    pit_stop_window_latest_lap: int = None
 
 
 class StateTracker:
@@ -50,11 +56,15 @@ class StateTracker:
             if s.last_lap_time_ms and (s.best_lap_time_ms is None or s.last_lap_time_ms < s.best_lap_time_ms):
                 s.best_lap_time_ms = s.last_lap_time_ms
 
-    def update_car_status(self, fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags):
+    def update_car_status(self, car_status):
         with self._lock:
-            self._state.fuel_in_tank = fuel_in_tank
-            self._state.fuel_remaining_laps = fuel_remaining_laps
-            self._state.flag_status = vehicle_fia_flags
+            s = self._state
+            s.fuel_in_tank = car_status["fuel_in_tank"]
+            s.fuel_remaining_laps = car_status["fuel_remaining_laps"]
+            s.flag_status = car_status["vehicle_fia_flags"]
+            s.fuel_mix = car_status["fuel_mix"]
+            s.ers_deploy_mode = car_status["ers_deploy_mode"]
+            s.ers_store_energy = car_status["ers_store_energy"]
 
     def update_player_car_index(self, player_car_index):
         with self._lock:
@@ -72,6 +82,9 @@ class StateTracker:
             s.track_temperature = session["track_temperature"]
             s.air_temperature = session["air_temperature"]
             s.safety_car_status = session["safety_car_status"]
+            s.total_laps = session["total_laps"]
+            s.pit_stop_window_ideal_lap = session["pit_stop_window_ideal_lap"]
+            s.pit_stop_window_latest_lap = session["pit_stop_window_latest_lap"]
             s.weather_forecast = [
                 {
                     "time_offset": sample["time_offset"],

@@ -18,6 +18,11 @@ CANNED_LINES = {
     "overtake_lost": "Position lost, car behind through.",
     "damage_detected": "Contact! {component_name} damage, {delta:.0f} percent.",
     "damage_fault": "Warning, {component_name} fault.",
+    "fuel_strategy_deficit": "Fuel tight, {deficit_kg:.2f} kilos short, need {required_burn_per_lap:.2f} per lap.",
+    "fuel_mix_advice": "Switch to a leaner fuel mix to save it.",
+    "ers_conserve": "ERS low, ease off deployment.",
+    "pit_window_open": "Pit window open, box this lap if you can.",
+    "pit_window_closing": "Last chance to pit, window closing.",
 }
 
 FLAG_NAMES = {0: "no", 1: "green", 2: "blue", 3: "yellow"}

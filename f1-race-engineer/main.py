@@ -34,6 +34,9 @@ def run_telemetry_loop(state_tracker, rule_engine, engineer_log):
         events += rule_engine.check_collision(state)
         events += rule_engine.check_damage_delta(state)
         events += rule_engine.check_overtake(state)
+        events += rule_engine.check_fuel_strategy(state)
+        events += rule_engine.check_ers(state)
+        events += rule_engine.check_pit_window(state)
         for event in events:
             line = event_to_line(event)
             engineer_log.add_callout(_now_str(), line)

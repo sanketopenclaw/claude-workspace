@@ -9,6 +9,8 @@ class Event:
 
 DAMAGE_FAULT_COMPONENTS = {"drs_fault", "ers_fault", "engine_blown", "engine_seized"}
 DAMAGE_DELTA_THRESHOLD = 5
+FUEL_BURN_WINDOW = 3
+ERS_LOW_THRESHOLD = 500000.0
 
 
 class RuleEngine:
@@ -26,6 +28,13 @@ class RuleEngine:
         self._last_collision_seen = None
         self._last_overtake_seen = None
         self._last_damage_components = None
+        self._fuel_lap_tracker_lap_num = None
+        self._fuel_lap_tracker_fuel = None
+        self._burn_rates = []
+        self._last_fuel_deficit_fired_lap = None
+        self._fired_ers_warning = False
+        self._fired_pit_window_ideal = False
+        self._fired_pit_window_latest = False
 
     def check_lap_completion(self, state):
         events = []
@@ -165,4 +174,67 @@ class RuleEngine:
                 events.append(Event("damage_detected", {"component": worst_component, "delta": worst_delta}))
         if current:
             self._last_damage_components = dict(current)
+        return events
+
+    def check_fuel_strategy(self, state):
+        events = []
+        lap_num = state.current_lap_num
+        if lap_num != self._fuel_lap_tracker_lap_num:
+            if self._fuel_lap_tracker_lap_num is not None and self._fuel_lap_tracker_fuel is not None:
+                burn = self._fuel_lap_tracker_fuel - state.fuel_in_tank
+                if burn > 0:
+                    self._burn_rates.append(burn)
+                    self._burn_rates = self._burn_rates[-FUEL_BURN_WINDOW:]
+            self._fuel_lap_tracker_lap_num = lap_num
+            self._fuel_lap_tracker_fuel = state.fuel_in_tank
+
+        if not self._burn_rates or state.total_laps is None:
+            return events
+        avg_burn_per_lap = sum(self._burn_rates) / len(self._burn_rates)
+        laps_remaining = state.total_laps - lap_num
+        if laps_remaining <= 0:
+            return events
+
+        fuel_needed = laps_remaining * avg_burn_per_lap
+        deficit_kg = fuel_needed - state.fuel_in_tank
+        if deficit_kg > 0 and self._last_fuel_deficit_fired_lap != lap_num:
+            events.append(Event("fuel_strategy_deficit", {
+                "deficit_kg": deficit_kg,
+                "avg_burn_per_lap": avg_burn_per_lap,
+                "required_burn_per_lap": state.fuel_in_tank / laps_remaining,
+            }))
+            self._last_fuel_deficit_fired_lap = lap_num
+            if state.fuel_mix in (2, 3):
+                events.append(Event("fuel_mix_advice", {"current_mix": state.fuel_mix}))
+        return events
+
+    def check_ers(self, state):
+        events = []
+        if state.ers_store_energy is None or state.ers_deploy_mode is None:
+            return events
+        if state.ers_store_energy < ERS_LOW_THRESHOLD and state.ers_deploy_mode in (2, 3):
+            if not self._fired_ers_warning:
+                events.append(Event("ers_conserve", {"ers_store_energy": state.ers_store_energy}))
+                self._fired_ers_warning = True
+        elif state.ers_store_energy >= ERS_LOW_THRESHOLD:
+            self._fired_ers_warning = False
+        return events
+
+    def check_pit_window(self, state):
+        events = []
+        lap_num = state.current_lap_num
+        if (
+            state.pit_stop_window_ideal_lap
+            and lap_num == state.pit_stop_window_ideal_lap
+            and not self._fired_pit_window_ideal
+        ):
+            events.append(Event("pit_window_open", {"lap": lap_num}))
+            self._fired_pit_window_ideal = True
+        if (
+            state.pit_stop_window_latest_lap
+            and lap_num == state.pit_stop_window_latest_lap
+            and not self._fired_pit_window_latest
+        ):
+            events.append(Event("pit_window_closing", {"lap": lap_num}))
+            self._fired_pit_window_latest = True
         return events

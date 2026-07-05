@@ -52,17 +52,18 @@ def test_parse_lap_data_packet_extracts_player_car_and_gaps():
     assert gap_behind_ms == 750
 
 
-def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3, vehicle_fia_flags=0):
+def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3, vehicle_fia_flags=0,
+                           fuel_mix=1, ers_deploy_mode=0, ers_store_energy=4000000.0):
     return struct.pack(
         packets.CAR_STATUS_FORMAT,
-        0, 0, 1, 50, 0,
+        0, 0, fuel_mix, 50, 0,
         fuel_in_tank, 110.0, fuel_remaining_laps,
         15000, 4000,
         8, 1, 1500,
         16, 16, 5,
         vehicle_fia_flags,
-        500.0, 300.0, 4000000.0,
-        0,
+        500.0, 300.0, ers_store_energy,
+        ers_deploy_mode,
         100.0, 50.0, 150.0, 200.0,
         0,
     )
@@ -71,14 +72,20 @@ def _build_car_status_car(fuel_in_tank=45.5, fuel_remaining_laps=12.3, vehicle_f
 def test_parse_car_status_packet_extracts_fuel_for_player_car():
     header = _build_header(packet_id=7, player_car_index=2)
     cars = [_build_car_status_car() for _ in range(22)]
-    cars[2] = _build_car_status_car(fuel_in_tank=30.0, fuel_remaining_laps=3.0, vehicle_fia_flags=3)
+    cars[2] = _build_car_status_car(
+        fuel_in_tank=30.0, fuel_remaining_laps=3.0, vehicle_fia_flags=3,
+        fuel_mix=3, ers_deploy_mode=2, ers_store_energy=1500000.0,
+    )
     data = header + b"".join(cars)
 
-    fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags = packets.parse_car_status_packet(data, player_car_index=2)
+    car_status = packets.parse_car_status_packet(data, player_car_index=2)
 
-    assert fuel_in_tank == 30.0
-    assert fuel_remaining_laps == 3.0
-    assert vehicle_fia_flags == 3
+    assert car_status["fuel_in_tank"] == 30.0
+    assert car_status["fuel_remaining_laps"] == 3.0
+    assert car_status["vehicle_fia_flags"] == 3
+    assert car_status["fuel_mix"] == 3
+    assert car_status["ers_deploy_mode"] == 2
+    assert car_status["ers_store_energy"] == 1500000.0
 
 
 def _build_car_damage_car(tyres_wear=(10.0, 12.0, 8.0, 9.0), **component_overrides):
@@ -164,10 +171,11 @@ def _build_aero_zone(zone_start=0.0, zone_end=0.0):
 
 
 def _build_session_packet(weather=2, safety_car_status=0, track_temperature=34, air_temperature=22,
-                           forecast_samples=((0, 2, 10), (15, 3, 60))):
+                           forecast_samples=((0, 2, 10), (15, 3, 60)), total_laps=50,
+                           pit_stop_window_ideal_lap=0, pit_stop_window_latest_lap=0):
     head1 = {
         "weather": weather, "track_temperature": track_temperature, "air_temperature": air_temperature,
-        "total_laps": 50, "track_length": 5000, "session_type": 10,
+        "total_laps": total_laps, "track_length": 5000, "session_type": 10,
         "track_id": 0, "formula": 0, "session_time_left": 3000,
         "session_duration": 3600, "pit_speed_limit": 80, "game_paused": 0,
         "is_spectating": 0, "spectator_car_index": 255,
@@ -185,6 +193,8 @@ def _build_session_packet(weather=2, safety_car_status=0, track_temperature=34, 
 
     head3 = {name: 0 for name, _ in packets.SESSION_HEAD3_SPEC}
     head3["num_sessions_in_weekend"] = 1
+    head3["pit_stop_window_ideal_lap"] = pit_stop_window_ideal_lap
+    head3["pit_stop_window_latest_lap"] = pit_stop_window_latest_lap
     data += _pack_spec(packets.SESSION_HEAD3_SPEC, head3)
     data += struct.pack(f"<{packets.NUM_WEEKEND_STRUCTURE}B", *([0] * packets.NUM_WEEKEND_STRUCTURE))
 
@@ -203,7 +213,7 @@ def _build_session_packet(weather=2, safety_car_status=0, track_temperature=34, 
 
 def test_parse_session_packet_extracts_weather_and_trims_arrays():
     header = _build_header(packet_id=1)
-    data = header + _build_session_packet()
+    data = header + _build_session_packet(total_laps=44, pit_stop_window_ideal_lap=20, pit_stop_window_latest_lap=25)
 
     session = packets.parse_session_packet(data)
 
@@ -211,6 +221,9 @@ def test_parse_session_packet_extracts_weather_and_trims_arrays():
     assert session["track_temperature"] == 34
     assert session["air_temperature"] == 22
     assert session["safety_car_status"] == 0
+    assert session["total_laps"] == 44
+    assert session["pit_stop_window_ideal_lap"] == 20
+    assert session["pit_stop_window_latest_lap"] == 25
     assert len(session["marshal_zones"]) == 2
     assert len(session["weather_forecast_samples"]) == 2
     assert session["weather_forecast_samples"][1]["weather"] == 3

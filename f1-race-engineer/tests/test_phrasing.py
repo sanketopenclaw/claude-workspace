@@ -52,6 +52,18 @@ def test_canned_line_for_damage_detected_uses_component_name():
     assert phrasing._canned_line(event) == "Contact! rear wing damage, 20 percent."
 
 
+def test_canned_line_for_fuel_strategy_deficit():
+    event = Event("fuel_strategy_deficit", {
+        "deficit_kg": 1.333, "avg_burn_per_lap": 5.33, "required_burn_per_lap": 4.0,
+    })
+    assert phrasing._canned_line(event) == "Fuel tight, 1.33 kilos short, need 4.00 per lap."
+
+
+def test_canned_line_for_pit_window_open():
+    event = Event("pit_window_open", {"lap": 20})
+    assert phrasing._canned_line(event) == "Pit window open, box this lap if you can."
+
+
 def test_answer_question_falls_back_to_canned_line_when_all_providers_fail(monkeypatch):
     from telemetry.state import State
 

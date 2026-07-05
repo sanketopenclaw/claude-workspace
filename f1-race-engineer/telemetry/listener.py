@@ -55,8 +55,8 @@ class TelemetryListener:
                 my_lap, gap_ahead_ms, gap_behind_ms = packets.parse_lap_data_packet(data, player_car_index)
                 self.state_tracker.update_lap_data(my_lap, gap_ahead_ms, gap_behind_ms)
             elif packet_id == PACKET_ID_CAR_STATUS:
-                fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags = packets.parse_car_status_packet(data, player_car_index)
-                self.state_tracker.update_car_status(fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags)
+                car_status = packets.parse_car_status_packet(data, player_car_index)
+                self.state_tracker.update_car_status(car_status)
             elif packet_id == PACKET_ID_CAR_DAMAGE:
                 tyres_wear, damage_components = packets.parse_car_damage_packet(data, player_car_index)
                 self.state_tracker.update_car_damage(tyres_wear, damage_components)

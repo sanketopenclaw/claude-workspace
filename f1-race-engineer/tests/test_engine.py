@@ -241,3 +241,90 @@ def test_check_damage_delta_fires_fault_event_on_transition():
     assert len(events) == 1
     assert events[0].kind == "damage_fault"
     assert events[0].data["component"] == "engine_blown"
+
+
+def test_check_fuel_strategy_fires_deficit_when_burn_rate_wont_finish_race():
+    engine = RuleEngine()
+    # 3 laps burning 3.0kg/lap, then 2 laps remaining but only 4.0kg left (needs 6.0kg)
+    lap1 = State(current_lap_num=1, fuel_in_tank=20.0, total_laps=5)
+    lap2 = State(current_lap_num=2, fuel_in_tank=17.0, total_laps=5)
+    lap3 = State(current_lap_num=3, fuel_in_tank=14.0, total_laps=5)
+    lap4_short_on_fuel = State(current_lap_num=4, fuel_in_tank=4.0, total_laps=5)
+
+    assert engine.check_fuel_strategy(lap1) == []  # no burn history yet
+    assert engine.check_fuel_strategy(lap2) == []
+    assert engine.check_fuel_strategy(lap3) == []
+
+    events = engine.check_fuel_strategy(lap4_short_on_fuel)
+    events_repeat = engine.check_fuel_strategy(lap4_short_on_fuel)  # same lap, no refire
+
+    assert len(events) == 1
+    assert events[0].kind == "fuel_strategy_deficit"
+    assert events[0].data["deficit_kg"] > 0
+    assert events_repeat == []
+
+
+def test_check_fuel_strategy_also_advises_leaner_mix_when_rich():
+    engine = RuleEngine()
+    lap1 = State(current_lap_num=1, fuel_in_tank=20.0, total_laps=3, fuel_mix=3)
+    lap2_short = State(current_lap_num=2, fuel_in_tank=1.0, total_laps=3, fuel_mix=3)
+
+    engine.check_fuel_strategy(lap1)
+    events = engine.check_fuel_strategy(lap2_short)
+
+    kinds = {e.kind for e in events}
+    assert kinds == {"fuel_strategy_deficit", "fuel_mix_advice"}
+
+
+def test_check_fuel_strategy_silent_when_plenty_of_fuel():
+    engine = RuleEngine()
+    lap1 = State(current_lap_num=1, fuel_in_tank=20.0, total_laps=5)
+    lap2_plenty = State(current_lap_num=2, fuel_in_tank=19.0, total_laps=5)
+
+    engine.check_fuel_strategy(lap1)
+    events = engine.check_fuel_strategy(lap2_plenty)
+
+    assert events == []
+
+
+def test_check_ers_fires_once_when_low_and_aggressive_mode():
+    engine = RuleEngine()
+    low_and_aggressive = State(ers_store_energy=100000.0, ers_deploy_mode=3)
+    recovered = State(ers_store_energy=1000000.0, ers_deploy_mode=3)
+
+    events_first = engine.check_ers(low_and_aggressive)
+    events_repeat = engine.check_ers(low_and_aggressive)
+    events_after_recovery = engine.check_ers(recovered)
+    events_low_again = engine.check_ers(low_and_aggressive)
+
+    assert len(events_first) == 1
+    assert events_first[0].kind == "ers_conserve"
+    assert events_repeat == []
+    assert events_after_recovery == []
+    assert len(events_low_again) == 1  # re-armed after recovery
+
+
+def test_check_ers_silent_in_conservative_mode():
+    engine = RuleEngine()
+    low_but_conservative = State(ers_store_energy=100000.0, ers_deploy_mode=1)
+
+    assert engine.check_ers(low_but_conservative) == []
+
+
+def test_check_pit_window_fires_once_at_ideal_and_latest_lap():
+    engine = RuleEngine()
+    before = State(current_lap_num=19, pit_stop_window_ideal_lap=20, pit_stop_window_latest_lap=25)
+    at_ideal = State(current_lap_num=20, pit_stop_window_ideal_lap=20, pit_stop_window_latest_lap=25)
+    at_ideal_repeat = State(current_lap_num=20, pit_stop_window_ideal_lap=20, pit_stop_window_latest_lap=25)
+    at_latest = State(current_lap_num=25, pit_stop_window_ideal_lap=20, pit_stop_window_latest_lap=25)
+
+    assert engine.check_pit_window(before) == []
+    events_ideal = engine.check_pit_window(at_ideal)
+    events_ideal_repeat = engine.check_pit_window(at_ideal_repeat)
+    events_latest = engine.check_pit_window(at_latest)
+
+    assert len(events_ideal) == 1
+    assert events_ideal[0].kind == "pit_window_open"
+    assert events_ideal_repeat == []
+    assert len(events_latest) == 1
+    assert events_latest[0].kind == "pit_window_closing"

@@ -65,10 +65,14 @@ CAR_STATUS_SIZE = struct.calcsize(CAR_STATUS_FORMAT)  # 59 bytes
 def parse_car_status_packet(data, player_car_index):
     offset = HEADER_SIZE + player_car_index * CAR_STATUS_SIZE
     f = struct.unpack_from(CAR_STATUS_FORMAT, data, offset)
-    fuel_in_tank = f[5]
-    fuel_remaining_laps = f[7]
-    vehicle_fia_flags = f[16]
-    return fuel_in_tank, fuel_remaining_laps, vehicle_fia_flags
+    return {
+        "fuel_mix": f[2],
+        "fuel_in_tank": f[5],
+        "fuel_remaining_laps": f[7],
+        "vehicle_fia_flags": f[16],
+        "ers_store_energy": f[19],
+        "ers_deploy_mode": f[20],
+    }
 
 
 CAR_DAMAGE_FORMAT = "<4f4B4B4B18B"

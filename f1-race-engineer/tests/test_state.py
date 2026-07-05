@@ -25,7 +25,10 @@ def test_update_lap_data_tracks_best_lap_time():
 
 def test_update_car_status_and_damage_populate_snapshot():
     tracker = StateTracker()
-    tracker.update_car_status(fuel_in_tank=25.0, fuel_remaining_laps=4.0, vehicle_fia_flags=3)
+    tracker.update_car_status({
+        "fuel_in_tank": 25.0, "fuel_remaining_laps": 4.0, "vehicle_fia_flags": 3,
+        "fuel_mix": 2, "ers_deploy_mode": 1, "ers_store_energy": 3000000.0,
+    })
     tracker.update_car_damage(tyres_wear=[10.0, 11.0, 9.0, 12.0], damage_components={"rear_wing": 5})
 
     snapshot = tracker.snapshot()
@@ -35,6 +38,9 @@ def test_update_car_status_and_damage_populate_snapshot():
     assert snapshot.tyres_wear == [10.0, 11.0, 9.0, 12.0]
     assert snapshot.flag_status == 3
     assert snapshot.damage_components == {"rear_wing": 5}
+    assert snapshot.fuel_mix == 2
+    assert snapshot.ers_deploy_mode == 1
+    assert snapshot.ers_store_energy == 3000000.0
 
 
 def test_update_player_car_index():
@@ -51,6 +57,9 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
         "track_temperature": 34,
         "air_temperature": 22,
         "safety_car_status": 0,
+        "total_laps": 50,
+        "pit_stop_window_ideal_lap": 22,
+        "pit_stop_window_latest_lap": 28,
         "weather_forecast_samples": [
             {"time_offset": 0, "weather": 2, "rain_percentage": 10, "session_type": 1,
              "track_temperature": 34, "track_temperature_change": 0,
@@ -67,6 +76,9 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
     assert snapshot.track_temperature == 34
     assert snapshot.air_temperature == 22
     assert snapshot.safety_car_status == 0
+    assert snapshot.total_laps == 50
+    assert snapshot.pit_stop_window_ideal_lap == 22
+    assert snapshot.pit_stop_window_latest_lap == 28
     assert snapshot.weather_forecast == [
         {"time_offset": 0, "weather": 2, "rain_percentage": 10},
         {"time_offset": 15, "weather": 3, "rain_percentage": 60},

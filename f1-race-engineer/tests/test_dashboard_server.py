@@ -10,7 +10,10 @@ def test_api_state_returns_expected_shape_and_values():
          "sector2_time_ms": 0, "car_position": 4, "current_lap_num": 12},
         gap_ahead_ms=812, gap_behind_ms=1240,
     )
-    tracker.update_car_status(fuel_in_tank=34.6, fuel_remaining_laps=3.2, vehicle_fia_flags=0)
+    tracker.update_car_status({
+        "fuel_in_tank": 34.6, "fuel_remaining_laps": 3.2, "vehicle_fia_flags": 0,
+        "fuel_mix": 1, "ers_deploy_mode": 0, "ers_store_energy": 0.0,
+    })
     tracker.update_car_damage(tyres_wear=[42.0, 38.0, 61.0, 58.0])
     log = EngineerLog()
     log.add_callout("14:32:07", "Purple lap! New session best.")
