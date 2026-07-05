@@ -116,18 +116,22 @@ async function poll() {
   }
 
   const pitTextEl = document.getElementById("pitStatusText");
-  if (data.pit_rejoin_position == null) {
+  const hasPitData = data.pit_window_ideal_lap != null || data.pit_rejoin_position != null;
+  if (!hasPitData) {
     pitTextEl.textContent = "Awaiting data";
   } else {
-    pitTextEl.textContent = "P" + data.pit_rejoin_position;
+    const parts = [];
+    if (data.pit_window_ideal_lap != null) parts.push("Lap " + data.pit_window_ideal_lap + "-" + data.pit_window_latest_lap);
+    if (data.pit_rejoin_position != null) parts.push("Rejoin P" + data.pit_rejoin_position);
+    pitTextEl.textContent = parts.join(" · ");
   }
-  document.getElementById("pitCard").classList.toggle("placeholder", data.pit_rejoin_position == null);
+  document.getElementById("pitCard").classList.toggle("placeholder", !hasPitData);
 
   const weatherTextEl = document.getElementById("weatherStatusText");
   if (data.weather == null) {
     weatherTextEl.textContent = "Awaiting data";
   } else {
-    weatherTextEl.textContent = JSON.stringify(data.weather);
+    weatherTextEl.textContent = data.weather.name + " · " + data.weather.track_temp + "°C track";
   }
   document.getElementById("weatherCard").classList.toggle("placeholder", data.weather == null);
 

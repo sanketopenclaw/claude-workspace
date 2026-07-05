@@ -10,6 +10,7 @@ from voice.wakeword import WakeWordListener
 from voice.stt import record_question, transcribe
 from dashboard.log import EngineerLog
 from dashboard.server import run_dashboard_server
+from dashboard.history import append_session
 import config
 
 
@@ -45,6 +46,8 @@ def run_telemetry_loop(state_tracker, rule_engine, engineer_log):
             line = event_to_line(event)
             engineer_log.add_callout(_now_str(), line)
             speak(line)
+            if event.kind == "debrief_ready":
+                append_session(rule_engine.get_lap_history(), event.data)
         time.sleep(0.5)
 
 

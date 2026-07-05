@@ -1,5 +1,7 @@
 import os
 from flask import Flask, jsonify, send_from_directory
+from voice.phrasing import WEATHER_NAMES
+from dashboard.history import read_sessions
 
 
 def create_app(state_tracker, engineer_log):
@@ -8,6 +10,14 @@ def create_app(state_tracker, engineer_log):
     @app.route("/api/state")
     def api_state():
         state = state_tracker.snapshot()
+        weather = None
+        if state.weather is not None:
+            weather = {
+                "code": state.weather,
+                "name": WEATHER_NAMES.get(state.weather, "unknown"),
+                "track_temp": state.track_temperature,
+                "air_temp": state.air_temperature,
+            }
         return jsonify({
             "current_lap_time_ms": state.current_lap_time_ms,
             "last_lap_time_ms": state.last_lap_time_ms,
@@ -19,8 +29,10 @@ def create_app(state_tracker, engineer_log):
             "fuel_in_tank": state.fuel_in_tank,
             "fuel_remaining_laps": state.fuel_remaining_laps,
             "tyres_wear": state.tyres_wear,
-            "pit_rejoin_position": None,
-            "weather": None,
+            "pit_rejoin_position": state.pit_stop_rejoin_position,
+            "pit_window_ideal_lap": state.pit_stop_window_ideal_lap,
+            "pit_window_latest_lap": state.pit_stop_window_latest_lap,
+            "weather": weather,
             "leaderboard": [
                 {**entry, "name": state.participant_names.get(entry["car_index"], f"Car {entry['car_index']}")}
                 for entry in state.leaderboard
@@ -28,9 +40,21 @@ def create_app(state_tracker, engineer_log):
             "log": engineer_log.snapshot(),
         })
 
+    @app.route("/api/sessions")
+    def api_sessions():
+        return jsonify(read_sessions())
+
     @app.route("/")
     def index():
         return send_from_directory(app.static_folder, "index.html")
+
+    @app.route("/hud")
+    def hud():
+        return send_from_directory(app.static_folder, "hud.html")
+
+    @app.route("/history")
+    def history_page():
+        return send_from_directory(app.static_folder, "history.html")
 
     return app
 

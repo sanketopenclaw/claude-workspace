@@ -1,0 +1,23 @@
+html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+* { box-sizing: border-box; }
+
+body {
+  width: 100vw; height: 100vh; color: #e8edf2; font-family: 'JetBrains Mono', monospace;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.hud {
+  background: rgba(10, 12, 15, .72); border: 1px solid rgba(124, 135, 148, .3); border-radius: 10px;
+  padding: 10px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 220px;
+}
+
+.hud-row { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.hud-row-main { font-size: 34px; font-weight: 700; }
+.hud-delta { font-variant-numeric: tabular-nums; }
+.hud-pos { color: #7c8794; }
+
+.hud-gap { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hud-gap-ahead { color: #f2c94c; }
+.hud-gap-behind { color: #56a3f5; }
+
+.hud-row-small { font-size: 13px; color: #7c8794; }

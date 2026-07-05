@@ -35,6 +35,7 @@ class State:
     total_laps: int = None
     pit_stop_window_ideal_lap: int = None
     pit_stop_window_latest_lap: int = None
+    pit_stop_rejoin_position: int = None
     gap_to_leader_ms: int = None
     leaderboard: list = dataclasses.field(default_factory=list)
     participant_names: dict = dataclasses.field(default_factory=dict)
@@ -120,6 +121,7 @@ class StateTracker:
             s.total_laps = session["total_laps"]
             s.pit_stop_window_ideal_lap = session["pit_stop_window_ideal_lap"]
             s.pit_stop_window_latest_lap = session["pit_stop_window_latest_lap"]
+            s.pit_stop_rejoin_position = session["pit_stop_rejoin_position"]
             s.weather_forecast = [
                 {
                     "time_offset": sample["time_offset"],

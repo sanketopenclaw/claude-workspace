@@ -63,6 +63,7 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
         "total_laps": 50,
         "pit_stop_window_ideal_lap": 22,
         "pit_stop_window_latest_lap": 28,
+        "pit_stop_rejoin_position": 6,
         "weather_forecast_samples": [
             {"time_offset": 0, "weather": 2, "rain_percentage": 10, "session_type": 1,
              "track_temperature": 34, "track_temperature_change": 0,
@@ -83,6 +84,7 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
     assert snapshot.total_laps == 50
     assert snapshot.pit_stop_window_ideal_lap == 22
     assert snapshot.pit_stop_window_latest_lap == 28
+    assert snapshot.pit_stop_rejoin_position == 6
     assert snapshot.weather_forecast == [
         {"time_offset": 0, "weather": 2, "rain_percentage": 10},
         {"time_offset": 15, "weather": 3, "rain_percentage": 60},

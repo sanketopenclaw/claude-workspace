@@ -40,3 +40,47 @@ def test_api_state_returns_expected_shape_and_values():
     assert data["leaderboard"][0]["name"] == "L. Rival"
     assert data["leaderboard"][0]["car_position"] == 1
     assert data["leaderboard"][1]["name"] == "Me"
+
+
+def test_api_state_wires_pit_and_weather_from_session_data():
+    tracker = StateTracker()
+    tracker.update_session({
+        "weather": 3, "track_temperature": 28, "air_temperature": 19, "safety_car_status": 0,
+        "session_type": 10, "total_laps": 50,
+        "pit_stop_window_ideal_lap": 22, "pit_stop_window_latest_lap": 28, "pit_stop_rejoin_position": 6,
+        "weather_forecast_samples": [],
+    })
+    log = EngineerLog()
+
+    app = create_app(tracker, log)
+    data = app.test_client().get("/api/state").get_json()
+
+    assert data["weather"] == {"code": 3, "name": "light rain", "track_temp": 28, "air_temp": 19}
+    assert data["pit_rejoin_position"] == 6
+    assert data["pit_window_ideal_lap"] == 22
+    assert data["pit_window_latest_lap"] == 28
+
+
+def test_api_sessions_returns_read_sessions_result(monkeypatch):
+    import dashboard.server as server_module
+
+    fake_sessions = [{"ended_at": "2026-07-06T00:00:00", "laps": [], "summary": {"lap_count": 3}}]
+    monkeypatch.setattr(server_module, "read_sessions", lambda: fake_sessions)
+
+    app = create_app(StateTracker(), EngineerLog())
+    data = app.test_client().get("/api/sessions").get_json()
+
+    assert data == fake_sessions
+
+
+def test_hud_and_history_pages_serve_html():
+    app = create_app(StateTracker(), EngineerLog())
+    client = app.test_client()
+
+    hud_resp = client.get("/hud")
+    history_resp = client.get("/history")
+
+    assert hud_resp.status_code == 200
+    assert b"<title>Race Engineer HUD</title>" in hud_resp.data
+    assert history_resp.status_code == 200
+    assert b"<title>Session History</title>" in history_resp.data
