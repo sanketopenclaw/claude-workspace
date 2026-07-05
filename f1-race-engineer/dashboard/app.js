@@ -27,9 +27,14 @@ function renderLog(entries) {
     const text = e.type === "qa" && e.q ? '"' + e.q + '" — ' + e.text : e.text;
     const meta = document.createElement("div");
     meta.className = "log-meta";
-    meta.innerHTML =
-      '<span class="log-time">' + e.time + '</span>' +
-      '<span class="log-tag">' + (e.type === "qa" ? "Q&A" : "CALLOUT") + '</span>';
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "log-time";
+    timeSpan.textContent = e.time;
+    const tagSpan = document.createElement("span");
+    tagSpan.className = "log-tag";
+    tagSpan.textContent = e.type === "qa" ? "Q&A" : "CALLOUT";
+    meta.appendChild(timeSpan);
+    meta.appendChild(tagSpan);
     const textEl = document.createElement("div");
     textEl.className = "log-text";
     textEl.textContent = text;
@@ -63,6 +68,9 @@ async function poll() {
       deltaEl.textContent = "+" + (d / 1000).toFixed(3);
       deltaEl.style.color = "#e5484d";
     }
+  } else {
+    deltaEl.textContent = "--.---";
+    deltaEl.style.color = "";
   }
 
   document.getElementById("position").textContent = data.car_position ?? "--";
