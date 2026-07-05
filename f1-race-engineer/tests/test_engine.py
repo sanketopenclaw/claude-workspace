@@ -464,3 +464,65 @@ def test_check_debrief_fires_once_at_session_end():
 def test_check_debrief_silent_when_session_not_ended():
     engine = RuleEngine()
     assert engine.check_debrief(State(session_ended=False)) == []
+
+
+def test_check_lap_completion_fires_new_best_lap_setup_when_setup_known():
+    engine = RuleEngine()
+    engine.check_lap_completion(State(current_lap_num=1, track_id=3, car_setup={"front_wing": 25}))
+    events = engine.check_lap_completion(State(
+        current_lap_num=2, last_lap_time_ms=90000, best_lap_time_ms=90000,
+        track_id=3, car_setup={"front_wing": 25},
+    ))
+
+    setup_events = [e for e in events if e.kind == "new_best_lap_setup"]
+    assert len(setup_events) == 1
+    assert setup_events[0].data["track_id"] == 3
+    assert setup_events[0].data["setup"] == {"front_wing": 25}
+    assert setup_events[0].data["lap_time_ms"] == 90000
+
+
+def test_check_lap_completion_silent_on_new_best_lap_setup_without_setup_data():
+    engine = RuleEngine()
+    engine.check_lap_completion(State(current_lap_num=1))
+    events = engine.check_lap_completion(State(current_lap_num=2, last_lap_time_ms=90000, best_lap_time_ms=90000))
+
+    assert [e for e in events if e.kind == "new_best_lap_setup"] == []
+
+
+def test_check_setup_recommendation_fires_once_per_track_when_reference_exists():
+    engine = RuleEngine()
+    lookup = lambda track_id: {"setup": {"front_wing": 25}, "lap_time_ms": 89500} if track_id == 3 else None
+
+    events_first = engine.check_setup_recommendation(State(track_id=3), lookup_fn=lookup)
+    events_repeat = engine.check_setup_recommendation(State(track_id=3), lookup_fn=lookup)
+    events_other_track = engine.check_setup_recommendation(State(track_id=9), lookup_fn=lookup)
+
+    assert len(events_first) == 1
+    assert events_first[0].kind == "setup_reference_available"
+    assert events_first[0].data["lap_time_ms"] == 89500
+    assert events_repeat == []
+    assert events_other_track == []  # no reference for track 9
+
+
+def test_check_setup_recommendation_silent_without_lookup_fn():
+    engine = RuleEngine()
+    assert engine.check_setup_recommendation(State(track_id=3)) == []
+
+
+def test_check_tyre_wear_imbalance_detects_front_and_rear():
+    engine = RuleEngine()
+    balanced = State(tyres_wear=[20.0, 20.0, 20.0, 20.0])
+    front_worn = State(tyres_wear=[40.0, 42.0, 20.0, 20.0])  # front avg 41, rear avg 20, diff 21
+    rear_worn = State(tyres_wear=[20.0, 20.0, 42.0, 40.0])  # rear avg 41, front avg 20, diff -21
+
+    assert engine.check_tyre_wear_imbalance(balanced) == []
+    events_front = engine.check_tyre_wear_imbalance(front_worn)
+    events_front_repeat = engine.check_tyre_wear_imbalance(front_worn)
+    events_rear = engine.check_tyre_wear_imbalance(rear_worn)
+
+    assert len(events_front) == 1
+    assert events_front[0].kind == "setup_hint_tyre_imbalance"
+    assert events_front[0].data["direction"] == "front"
+    assert events_front_repeat == []  # same direction, no refire
+    assert len(events_rear) == 1
+    assert events_rear[0].data["direction"] == "rear"

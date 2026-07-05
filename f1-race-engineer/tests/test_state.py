@@ -60,6 +60,7 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
         "air_temperature": 22,
         "safety_car_status": 0,
         "session_type": 10,
+        "track_id": 3,
         "total_laps": 50,
         "pit_stop_window_ideal_lap": 22,
         "pit_stop_window_latest_lap": 28,
@@ -81,6 +82,7 @@ def test_update_session_populates_weather_and_safety_car_snapshot():
     assert snapshot.air_temperature == 22
     assert snapshot.safety_car_status == 0
     assert snapshot.session_type == 10
+    assert snapshot.track_id == 3
     assert snapshot.total_laps == 50
     assert snapshot.pit_stop_window_ideal_lap == 22
     assert snapshot.pit_stop_window_latest_lap == 28

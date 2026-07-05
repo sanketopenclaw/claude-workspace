@@ -8,6 +8,7 @@ PACKET_ID_SESSION = 1
 PACKET_ID_LAP_DATA = 2
 PACKET_ID_EVENT = 3
 PACKET_ID_PARTICIPANTS = 4
+PACKET_ID_CAR_SETUPS = 5
 PACKET_ID_CAR_STATUS = 7
 PACKET_ID_CAR_DAMAGE = 10
 
@@ -74,5 +75,8 @@ class TelemetryListener:
             elif packet_id == PACKET_ID_PARTICIPANTS:
                 num_active_cars, participants = packets.parse_participants_packet(data)
                 self.state_tracker.update_participants(num_active_cars, participants)
+            elif packet_id == PACKET_ID_CAR_SETUPS:
+                setup = packets.parse_car_setup_packet(data, player_car_index)
+                self.state_tracker.update_car_setup(setup)
         except (struct.error, IndexError, UnicodeDecodeError) as e:
             print(f"[telemetry] malformed packet ignored: {e}")

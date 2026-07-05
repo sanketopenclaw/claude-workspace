@@ -82,14 +82,20 @@
       <div class="board" id="leaderboard"></div>
     </section>
 
-    <section class="panel setup placeholder">
+    <section class="panel setup placeholder" id="setupPanel">
       <div class="panel-header">
-        <span class="dot dot-dim"></span>
-        <span class="label label-dim">CAR SETUP</span>
+        <span class="dot dot-dim" id="setupDot"></span>
+        <span class="label label-dim" id="setupLabel">CAR SETUP</span>
       </div>
-      <div class="setup-body">
+      <div class="setup-body" id="setupPlaceholderBody">
         <span class="gear-icon">&#9881;</span>
-        <span class="setup-text">Setup recommendations coming soon</span>
+        <span class="setup-text">Awaiting setup data</span>
+      </div>
+      <div class="setup-grid" id="setupGrid" style="display: none;">
+        <div class="setup-item"><span class="mini-label">FRONT WING</span><span class="setup-val" id="setupFrontWing">--</span></div>
+        <div class="setup-item"><span class="mini-label">REAR WING</span><span class="setup-val" id="setupRearWing">--</span></div>
+        <div class="setup-item"><span class="mini-label">BRAKE BIAS</span><span class="setup-val" id="setupBrakeBias">--</span></div>
+        <div class="setup-item"><span class="mini-label">TYRE PSI (F/R)</span><span class="setup-val" id="setupTyrePressures">--</span></div>
       </div>
     </section>
   </div>

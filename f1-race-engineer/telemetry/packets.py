@@ -320,3 +320,27 @@ def parse_participants_packet(data):
     for participant in participants:
         participant["name"] = participant["name"].split(b"\x00", 1)[0].decode("utf-8", errors="replace")
     return num_active_cars, participants[:num_active_cars]
+
+
+# ---------------------------------------------------------------------------
+# Car Setups packet (id 5) — Phase 3 setup profiler/library
+# ---------------------------------------------------------------------------
+
+CAR_SETUP_SPEC = [
+    ("front_wing", "B"), ("rear_wing", "B"), ("on_throttle", "B"), ("off_throttle", "B"),
+    ("front_camber", "f"), ("rear_camber", "f"), ("front_toe", "f"), ("rear_toe", "f"),
+    ("front_suspension", "B"), ("rear_suspension", "B"),
+    ("front_anti_roll_bar", "B"), ("rear_anti_roll_bar", "B"),
+    ("front_suspension_height", "B"), ("rear_suspension_height", "B"),
+    ("brake_pressure", "B"), ("brake_bias", "B"), ("engine_braking", "B"),
+    ("rear_left_tyre_pressure", "f"), ("rear_right_tyre_pressure", "f"),
+    ("front_left_tyre_pressure", "f"), ("front_right_tyre_pressure", "f"),
+    ("ballast", "B"), ("fuel_load", "f"),
+]
+CAR_SETUP_SIZE = _spec_size(CAR_SETUP_SPEC)  # 49 bytes
+
+
+def parse_car_setup_packet(data, player_car_index):
+    offset = HEADER_SIZE + player_car_index * CAR_SETUP_SIZE
+    setup, _ = _unpack_spec(CAR_SETUP_SPEC, data, offset)
+    return setup

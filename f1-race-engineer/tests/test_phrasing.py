@@ -121,3 +121,13 @@ def test_event_to_line_prompt_uses_configured_personality(monkeypatch):
     phrasing.event_to_line(Event("tyre_wear", {"threshold": 30, "remaining_pct": 28.0}))
 
     assert phrasing.PERSONALITY_PROMPTS["intense"] in captured["prompt"]
+
+
+def test_canned_line_for_setup_reference_available():
+    event = Event("setup_reference_available", {"track_id": 3, "lap_time_ms": 89500})
+    assert phrasing._canned_line(event) == "Got your best setup for this track on file, 89500 milliseconds."
+
+
+def test_canned_line_for_setup_hint_tyre_imbalance():
+    event = Event("setup_hint_tyre_imbalance", {"direction": "front", "diff": 21.0})
+    assert phrasing._canned_line(event) == phrasing.TYRE_IMBALANCE_HINTS["front"]

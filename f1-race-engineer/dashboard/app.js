@@ -135,6 +135,21 @@ async function poll() {
   }
   document.getElementById("weatherCard").classList.toggle("placeholder", data.weather == null);
 
+  const hasSetup = data.car_setup != null;
+  document.getElementById("setupPanel").classList.toggle("placeholder", !hasSetup);
+  document.getElementById("setupPlaceholderBody").style.display = hasSetup ? "none" : "flex";
+  document.getElementById("setupGrid").style.display = hasSetup ? "grid" : "none";
+  document.getElementById("setupDot").className = "dot " + (hasSetup ? "dot-green" : "dot-dim");
+  document.getElementById("setupLabel").className = "label" + (hasSetup ? "" : " label-dim");
+  if (hasSetup) {
+    const s = data.car_setup;
+    document.getElementById("setupFrontWing").textContent = s.front_wing;
+    document.getElementById("setupRearWing").textContent = s.rear_wing;
+    document.getElementById("setupBrakeBias").textContent = s.brake_bias + "%";
+    document.getElementById("setupTyrePressures").textContent =
+      s.front_left_tyre_pressure.toFixed(1) + " / " + s.rear_left_tyre_pressure.toFixed(1);
+  }
+
   renderLeaderboard(data.leaderboard || [], data.car_position);
   renderLog(data.log || []);
 }

@@ -11,6 +11,7 @@ from voice.stt import record_question, transcribe
 from dashboard.log import EngineerLog
 from dashboard.server import run_dashboard_server
 from dashboard.history import append_session
+from rules.setup_library import save_best_setup, load_best_setup
 import config
 
 
@@ -42,12 +43,16 @@ def run_telemetry_loop(state_tracker, rule_engine, engineer_log):
         events += rule_engine.check_coaching(state)
         events += rule_engine.check_speed_trap(state)
         events += rule_engine.check_debrief(state)
+        events += rule_engine.check_setup_recommendation(state, lookup_fn=load_best_setup)
+        events += rule_engine.check_tyre_wear_imbalance(state)
         for event in events:
             line = event_to_line(event)
             engineer_log.add_callout(_now_str(), line)
             speak(line)
             if event.kind == "debrief_ready":
                 append_session(rule_engine.get_lap_history(), event.data)
+            elif event.kind == "new_best_lap_setup":
+                save_best_setup(event.data["track_id"], event.data["setup"], event.data["lap_time_ms"])
         time.sleep(0.5)
 
 

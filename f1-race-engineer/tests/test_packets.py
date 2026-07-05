@@ -284,3 +284,27 @@ def test_parse_participants_packet_extracts_names_and_trims_to_active_count():
     assert num_active_cars == 4
     assert len(parsed) == 4
     assert parsed[3]["name"] == "M. Verstappen"
+
+
+def _build_car_setup(**overrides):
+    values = {name: 0 for name, _ in packets.CAR_SETUP_SPEC}
+    values.update({
+        "front_wing": 25, "rear_wing": 40, "front_camber": -3.0, "rear_camber": -1.5,
+        "rear_left_tyre_pressure": 22.5, "rear_right_tyre_pressure": 22.5,
+        "front_left_tyre_pressure": 23.0, "front_right_tyre_pressure": 23.0, "fuel_load": 40.0,
+    })
+    values.update(overrides)
+    return _pack_spec(packets.CAR_SETUP_SPEC, values)
+
+
+def test_parse_car_setup_packet_extracts_player_setup():
+    header = _build_header(packet_id=5, player_car_index=2)
+    cars = [_build_car_setup() for _ in range(24)]
+    cars[2] = _build_car_setup(front_wing=30, rear_wing=45)
+    data = header + b"".join(cars) + struct.pack("<f", 0.0)
+
+    setup = packets.parse_car_setup_packet(data, player_car_index=2)
+
+    assert setup["front_wing"] == 30
+    assert setup["rear_wing"] == 45
+    assert setup["front_camber"] == -3.0

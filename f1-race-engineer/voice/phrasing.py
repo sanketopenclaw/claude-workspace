@@ -30,6 +30,9 @@ CANNED_LINES = {
     "speed_trap_personal_best": "Personal best speed trap.",
     "speed_trap_overall_best": "Fastest speed trap in the session!",
     "debrief_ready": "Session done. {lap_count} laps, best {best_lap_ms} milliseconds, average {avg_lap_ms:.0f}.",
+    "new_best_lap_setup": "New track best, setup saved.",
+    "setup_reference_available": "Got your best setup for this track on file, {lap_time_ms} milliseconds.",
+    "setup_hint_tyre_imbalance": "{imbalance_hint}",
 }
 
 FLAG_NAMES = {0: "no", 1: "green", 2: "blue", 3: "yellow"}
@@ -39,6 +42,10 @@ COMPONENT_DISPLAY_NAMES = {
     "front_left_wing": "front left wing", "front_right_wing": "front right wing", "rear_wing": "rear wing",
     "floor": "floor", "diffuser": "diffuser", "sidepod": "sidepod", "gear_box": "gearbox", "engine": "engine",
     "drs_fault": "DRS", "ers_fault": "ERS", "engine_blown": "engine", "engine_seized": "engine",
+}
+TYRE_IMBALANCE_HINTS = {
+    "front": "Front tyres wearing faster, car's understeering. Try more front wing or camber.",
+    "rear": "Rear tyres wearing faster, car's oversteering. Try more rear wing or less rear camber.",
 }
 
 PERSONALITY_PROMPTS = {
@@ -68,6 +75,8 @@ def _canned_line(event):
         data["weather_name"] = WEATHER_NAMES.get(data.get("weather"), "weather change")
     elif event.kind in ("damage_detected", "damage_fault"):
         data["component_name"] = COMPONENT_DISPLAY_NAMES.get(data.get("component"), "car")
+    elif event.kind == "setup_hint_tyre_imbalance":
+        data["imbalance_hint"] = TYRE_IMBALANCE_HINTS.get(data.get("direction"), "Tyre wear imbalance detected.")
     template = CANNED_LINES.get(event.kind, "Note: {kind}")
     try:
         return template.format(kind=event.kind, **data)

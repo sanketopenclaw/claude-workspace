@@ -17,6 +17,7 @@ ERS_LOW_THRESHOLD = 500000.0
 QUALIFYING_SESSION_TYPES = {5, 6, 7, 8, 9}
 COACHING_BUCKET_METERS = 100
 COACHING_SPEED_DELTA_THRESHOLD_KMH = 15
+TYRE_IMBALANCE_THRESHOLD = 15  # percentage points, front avg wear vs rear avg wear
 
 
 class RuleEngine:
@@ -48,6 +49,8 @@ class RuleEngine:
         self._lap_history = []
         self._last_speed_trap_seen = None
         self._debrief_fired = False
+        self._last_track_id_seen_for_setup = None
+        self._fired_tyre_imbalance_direction = None
 
     def check_lap_completion(self, state):
         events = []
@@ -73,8 +76,15 @@ class RuleEngine:
             # "ghost" to beat whenever it improved the session best (including
             # the very first completed lap, which has nothing to beat yet but
             # still needs to seed the reference).
-            if state.best_lap_time_ms is not None and state.best_lap_time_ms != self._prev_best_lap_time_ms:
+            new_best = state.best_lap_time_ms is not None and state.best_lap_time_ms != self._prev_best_lap_time_ms
+            if new_best:
                 self._best_lap_reference = dict(self._current_lap_reference)
+                if state.car_setup and state.track_id is not None:
+                    events.append(Event("new_best_lap_setup", {
+                        "track_id": state.track_id,
+                        "setup": dict(state.car_setup),
+                        "lap_time_ms": state.best_lap_time_ms,
+                    }))
             self._current_lap_reference = {}
             self._coaching_fired_buckets = set()
 
@@ -334,3 +344,37 @@ class RuleEngine:
 
     def get_lap_history(self):
         return list(self._lap_history)
+
+    def check_setup_recommendation(self, state, lookup_fn=None):
+        events = []
+        if lookup_fn is None or state.track_id is None:
+            return events
+        if state.track_id == self._last_track_id_seen_for_setup:
+            return events
+        self._last_track_id_seen_for_setup = state.track_id
+        best = lookup_fn(state.track_id)
+        if best is not None:
+            events.append(Event("setup_reference_available", {
+                "track_id": state.track_id,
+                "lap_time_ms": best["lap_time_ms"],
+            }))
+        return events
+
+    def check_tyre_wear_imbalance(self, state):
+        events = []
+        if not state.tyres_wear or len(state.tyres_wear) < 4:
+            return events
+        front_avg = (state.tyres_wear[0] + state.tyres_wear[1]) / 2
+        rear_avg = (state.tyres_wear[2] + state.tyres_wear[3]) / 2
+        diff = front_avg - rear_avg
+        if diff >= TYRE_IMBALANCE_THRESHOLD:
+            direction = "front"
+        elif diff <= -TYRE_IMBALANCE_THRESHOLD:
+            direction = "rear"
+        else:
+            direction = None
+
+        if direction is not None and direction != self._fired_tyre_imbalance_direction:
+            events.append(Event("setup_hint_tyre_imbalance", {"direction": direction, "diff": abs(diff)}))
+        self._fired_tyre_imbalance_direction = direction
+        return events

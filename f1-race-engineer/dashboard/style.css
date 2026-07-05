@@ -75,3 +75,7 @@ body {
 .setup-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
 .gear-icon { width: 48px; height: 48px; border-radius: 12px; border: 1px solid #232b34; display: flex; align-items: center; justify-content: center; color: #3c4551; font-size: 26px; }
 .setup-text { font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 22px; color: #5c6672; }
+
+.setup-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 4px 4px 16px; }
+.setup-item { background: #0a0d10; border: 1px solid #1c232b; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.setup-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; color: #dbe2e9; }

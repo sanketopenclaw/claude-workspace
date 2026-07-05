@@ -33,6 +33,7 @@ def create_app(state_tracker, engineer_log):
             "pit_window_ideal_lap": state.pit_stop_window_ideal_lap,
             "pit_window_latest_lap": state.pit_stop_window_latest_lap,
             "weather": weather,
+            "car_setup": state.car_setup or None,
             "leaderboard": [
                 {**entry, "name": state.participant_names.get(entry["car_index"], f"Car {entry['car_index']}")}
                 for entry in state.leaderboard

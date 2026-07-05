@@ -44,6 +44,8 @@ class State:
     speed_kmh: float = None
     last_speed_trap: dict = None
     session_ended: bool = False
+    track_id: int = None
+    car_setup: dict = dataclasses.field(default_factory=dict)
 
 
 class StateTracker:
@@ -100,6 +102,10 @@ class StateTracker:
             self._state.tyres_wear = list(tyres_wear)
             self._state.damage_components = dict(damage_components or {})
 
+    def update_car_setup(self, setup):
+        with self._lock:
+            self._state.car_setup = dict(setup)
+
     def update_motion(self, player_car_index, motion_cars):
         player_motion = motion_cars[player_car_index]
         speed_ms = (
@@ -118,6 +124,7 @@ class StateTracker:
             s.air_temperature = session["air_temperature"]
             s.safety_car_status = session["safety_car_status"]
             s.session_type = session["session_type"]
+            s.track_id = session["track_id"]
             s.total_laps = session["total_laps"]
             s.pit_stop_window_ideal_lap = session["pit_stop_window_ideal_lap"]
             s.pit_stop_window_latest_lap = session["pit_stop_window_latest_lap"]
@@ -164,4 +171,5 @@ class StateTracker:
                 damage_components=dict(self._state.damage_components),
                 leaderboard=list(self._state.leaderboard),
                 participant_names=dict(self._state.participant_names),
+                car_setup=dict(self._state.car_setup),
             )

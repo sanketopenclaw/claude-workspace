@@ -8,7 +8,7 @@ from dashboard.server import create_app
 from voice import phrasing
 from tests.test_packets import (
     _build_header, _build_lap_data_car, _build_car_status_car, _build_car_damage_car,
-    _build_session_packet, _pack_spec, _build_participant, _build_car_motion_car,
+    _build_session_packet, _pack_spec, _build_participant, _build_car_motion_car, _build_car_setup,
 )
 
 PLAYER_INDEX = 0
@@ -81,6 +81,13 @@ def _session_end_event_packet():
     return header + b"SEND" + b"\x00" * 12
 
 
+def _car_setup_packet():
+    header = _build_header(packet_id=5, player_car_index=PLAYER_INDEX)
+    cars = [_build_car_setup() for _ in range(packets.NUM_CARS)]
+    cars[PLAYER_INDEX] = _build_car_setup(front_wing=28, rear_wing=42)
+    return header + b"".join(cars) + struct.pack("<f", 0.0)
+
+
 def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     monkeypatch.setattr(phrasing, "PROVIDER_CHAIN", [])  # force canned lines, no real API calls
 
@@ -99,8 +106,11 @@ def test_dry_run_full_pipeline_without_network_or_llm(monkeypatch):
     listener._dispatch(_retirement_event_packet(vehicle_idx=7))
     listener._dispatch(_motion_packet())
     listener._dispatch(_session_end_event_packet())
+    listener._dispatch(_car_setup_packet())
 
     state = state_tracker.snapshot()
+    assert state.car_setup["front_wing"] == 28
+    assert state.car_setup["rear_wing"] == 42
     assert state.weather == 4
     assert state.safety_car_status == 2
     assert state.last_penalty["vehicle_idx"] == 0

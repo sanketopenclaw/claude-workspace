@@ -46,7 +46,7 @@ def test_api_state_wires_pit_and_weather_from_session_data():
     tracker = StateTracker()
     tracker.update_session({
         "weather": 3, "track_temperature": 28, "air_temperature": 19, "safety_car_status": 0,
-        "session_type": 10, "total_laps": 50,
+        "session_type": 10, "track_id": 3, "total_laps": 50,
         "pit_stop_window_ideal_lap": 22, "pit_stop_window_latest_lap": 28, "pit_stop_rejoin_position": 6,
         "weather_forecast_samples": [],
     })
@@ -84,3 +84,18 @@ def test_hud_and_history_pages_serve_html():
     assert b"<title>Race Engineer HUD</title>" in hud_resp.data
     assert history_resp.status_code == 200
     assert b"<title>Session History</title>" in history_resp.data
+
+
+def test_api_state_exposes_car_setup():
+    tracker = StateTracker()
+    tracker.update_car_setup({"front_wing": 25, "rear_wing": 40})
+    log = EngineerLog()
+
+    data = create_app(tracker, log).test_client().get("/api/state").get_json()
+
+    assert data["car_setup"] == {"front_wing": 25, "rear_wing": 40}
+
+
+def test_api_state_car_setup_none_when_unset():
+    data = create_app(StateTracker(), EngineerLog()).test_client().get("/api/state").get_json()
+    assert data["car_setup"] is None
