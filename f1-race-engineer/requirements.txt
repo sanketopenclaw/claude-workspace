@@ -1,4 +1,4 @@
-anthropic
+openai
 edge-tts
 pygame
 openwakeword
