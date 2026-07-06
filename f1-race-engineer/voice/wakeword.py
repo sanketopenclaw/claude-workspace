@@ -1,4 +1,5 @@
 import threading
+import time
 import openwakeword
 from openwakeword.model import Model
 import sounddevice as sd
@@ -13,6 +14,7 @@ class WakeWordListener(threading.Thread):
         super().__init__(daemon=True)
         self.on_wake = on_wake
         self._stop = threading.Event()
+        self._last_wake_time = 0.0
         openwakeword.utils.download_models()
         self._model = Model(
             wakeword_models=[config.WAKE_WORD_NAME],
@@ -25,7 +27,9 @@ class WakeWordListener(threading.Thread):
                 audio_chunk, _ = stream.read(CHUNK_SIZE)
                 prediction = self._model.predict(audio_chunk[:, 0])
                 score = prediction.get(config.WAKE_WORD_NAME, 0.0)
-                if score > 0.5:
+                now = time.time()
+                if score > 0.5 and (now - self._last_wake_time) >= config.WAKE_WORD_COOLDOWN_SECONDS:
+                    self._last_wake_time = now
                     self.on_wake()
 
     def stop(self):

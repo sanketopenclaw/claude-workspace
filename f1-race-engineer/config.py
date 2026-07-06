@@ -17,6 +17,10 @@ TTS_VOICE = "en-GB-RyanNeural"
 # WAKE_WORD_NAME to any pretrained model name, or point it at a custom .onnx path
 # once trained.
 WAKE_WORD_NAME = "hey_jarvis"
+# Ignores repeat wake-word detections within this window - a noisy cockpit (engine,
+# sim rig motors) can cause the model to fire repeatedly on the same acoustic event,
+# each one otherwise burning a full record+transcribe+LLM+speak cycle.
+WAKE_WORD_COOLDOWN_SECONDS = 3.0
 WHISPER_MODEL_SIZE = "base.en"
 
 LLM_PROVIDER_TIMEOUT_SECONDS = 5.0  # hard per-provider cutoff before falling through the chain
