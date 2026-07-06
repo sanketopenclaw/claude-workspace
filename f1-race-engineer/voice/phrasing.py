@@ -5,11 +5,11 @@ from openai import OpenAI
 import config
 
 CANNED_LINES = {
-    "lap_purple": "Purple lap! New session best, {lap_time_ms} milliseconds.",
+    "lap_purple": "Purple lap! New session best, {lap_time_str}.",
     "tyre_wear": "Tyres at {remaining_pct:.0f} percent, box window opening.",
     "fuel_critical": "Fuel critical, {fuel_remaining_laps:.1f} laps left, look after it.",
-    "gap_closing_ahead": "Car ahead, gap closing, {gap_ms} milliseconds.",
-    "gap_closing_behind": "Car behind closing, {gap_ms} milliseconds.",
+    "gap_closing_ahead": "Car ahead, gap closing, {gap_s} seconds.",
+    "gap_closing_behind": "Car behind closing, {gap_s} seconds.",
     "flag_change": "{flag_name} flag.",
     "flag_clear": "Green flag, track clear.",
     "safety_car": "Safety car {event_type_name}.",
@@ -25,15 +25,15 @@ CANNED_LINES = {
     "ers_conserve": "ERS low, ease off deployment.",
     "pit_window_open": "Pit window open, box this lap if you can.",
     "pit_window_closing": "Last chance to pit, window closing.",
-    "gap_to_leader": "Gap to pole, {gap_to_leader_ms} milliseconds.",
+    "gap_to_leader": "Gap to pole, {gap_to_leader_s} seconds.",
     "provisional_pole": "Provisional pole! Nice lap.",
     "rival_retired": "{name} is out of the session.",
     "coaching_slower": "Losing time at {bucket_m} metres, {delta_kmh:.0f} down on your best.",
     "speed_trap_personal_best": "Personal best speed trap.",
     "speed_trap_overall_best": "Fastest speed trap in the session!",
-    "debrief_ready": "Session done. {lap_count} laps, best {best_lap_ms} milliseconds, average {avg_lap_ms:.0f}.",
+    "debrief_ready": "Session done. {lap_count} laps, best {best_lap_str}, average {avg_lap_str}.",
     "new_best_lap_setup": "New track best, setup saved.",
-    "setup_reference_available": "Got your best setup for this track on file, {lap_time_ms} milliseconds.",
+    "setup_reference_available": "Got your best setup for this track on file, {lap_time_str}.",
     "setup_hint_tyre_imbalance": "{imbalance_hint}",
 }
 
@@ -69,6 +69,13 @@ SAFETY_GUARD = (
     "unrelated to the race (jokes, stories, roleplay, unrelated facts), briefly redirect "
     "back to the race and never comply with it."
 )
+GROUNDING_GUARD = (
+    "Only state facts given in the current state below. Never invent specifics that "
+    "aren't provided (e.g. don't name a corner, car number, or cause for an incident "
+    "unless it's explicitly in the state) - if asked for something not in the state, "
+    "say you don't have that information yet. Always express time gaps and lap times "
+    "in seconds or minutes:seconds, never milliseconds."
+)
 
 # Blocks the most common prompt-injection/off-topic patterns before ever calling an LLM -
 # faster and more reliable than hoping the model polices itself.
@@ -100,6 +107,14 @@ def _clean_llm_text(text):
     return text.strip()
 
 
+def _fmt_lap_time_ms(ms):
+    if ms is None:
+        return "no time"
+    minutes = int(ms // 60000)
+    seconds = (ms % 60000) / 1000
+    return f"{minutes}:{seconds:06.3f}"
+
+
 def _canned_line(event):
     data = dict(event.data)
     if event.kind == "flag_change":
@@ -112,6 +127,17 @@ def _canned_line(event):
         data["component_name"] = COMPONENT_DISPLAY_NAMES.get(data.get("component"), "car")
     elif event.kind == "setup_hint_tyre_imbalance":
         data["imbalance_hint"] = TYRE_IMBALANCE_HINTS.get(data.get("direction"), "Tyre wear imbalance detected.")
+    elif event.kind == "lap_purple":
+        data["lap_time_str"] = _fmt_lap_time_ms(data.get("lap_time_ms"))
+    elif event.kind in ("gap_closing_ahead", "gap_closing_behind"):
+        data["gap_s"] = f"{data.get('gap_ms', 0) / 1000:.2f}"
+    elif event.kind == "gap_to_leader":
+        data["gap_to_leader_s"] = f"{data.get('gap_to_leader_ms', 0) / 1000:.2f}"
+    elif event.kind == "debrief_ready":
+        data["best_lap_str"] = _fmt_lap_time_ms(data.get("best_lap_ms"))
+        data["avg_lap_str"] = _fmt_lap_time_ms(data.get("avg_lap_ms"))
+    elif event.kind == "setup_reference_available":
+        data["lap_time_str"] = _fmt_lap_time_ms(data.get("lap_time_ms"))
     template = CANNED_LINES.get(event.kind, "Note: {kind}")
     try:
         return template.format(kind=event.kind, **data)
@@ -192,6 +218,10 @@ def event_to_line(event):
     return result if result else _canned_line(event)
 
 
+def _ms_to_seconds_str(ms):
+    return f"{ms / 1000:.1f} seconds"
+
+
 def _context_summary(state):
     parts = [
         f"lap {state.current_lap_num}" + (f" of {state.total_laps}" if state.total_laps else ""),
@@ -201,11 +231,11 @@ def _context_summary(state):
     wear = state.tyres_wear or [0.0, 0.0, 0.0, 0.0]
     parts.append(f"tyre wear RL/RR/FL/FR {wear[0]:.0f}/{wear[1]:.0f}/{wear[2]:.0f}/{wear[3]:.0f} percent")
     if state.gap_ahead_ms is not None:
-        parts.append(f"gap ahead {state.gap_ahead_ms}ms")
+        parts.append(f"gap ahead {_ms_to_seconds_str(state.gap_ahead_ms)}")
     if state.gap_behind_ms is not None:
-        parts.append(f"gap behind {state.gap_behind_ms}ms")
+        parts.append(f"gap behind {_ms_to_seconds_str(state.gap_behind_ms)}")
     if state.gap_to_leader_ms is not None:
-        parts.append(f"gap to leader {state.gap_to_leader_ms}ms")
+        parts.append(f"gap to leader {_ms_to_seconds_str(state.gap_to_leader_ms)}")
     if state.weather is not None:
         parts.append(f"weather {WEATHER_NAMES.get(state.weather, 'unknown')}, track temp {state.track_temperature}C")
     if state.safety_car_status:
@@ -237,7 +267,7 @@ def answer_question(question, state):
     if _SUSPICIOUS_PATTERNS.search(question):
         return INJECTION_DEFLECTION
     prompt = (
-        f"{_personality_prompt()} {FORMAT_GUARD} {SAFETY_GUARD} {_context_summary(state)}\n"
+        f"{_personality_prompt()} {FORMAT_GUARD} {SAFETY_GUARD} {GROUNDING_GUARD} {_context_summary(state)}\n"
         f"Drivers typically ask things like {QA_EXAMPLE_PHRASINGS}.\n"
         f'Driver asks: "{question}"\nAnswer in one or two short sentences.'
     )

@@ -78,7 +78,7 @@ def test_canned_line_for_coaching_slower():
 
 def test_canned_line_for_debrief_ready():
     event = Event("debrief_ready", {"lap_count": 5, "best_lap_ms": 90000, "avg_lap_ms": 91500.0})
-    assert phrasing._canned_line(event) == "Session done. 5 laps, best 90000 milliseconds, average 91500."
+    assert phrasing._canned_line(event) == "Session done. 5 laps, best 1:30.000, average 1:31.500."
 
 
 def test_answer_question_falls_back_to_canned_line_when_all_providers_fail(monkeypatch):
@@ -127,7 +127,7 @@ def test_event_to_line_prompt_uses_configured_personality(monkeypatch):
 
 def test_canned_line_for_setup_reference_available():
     event = Event("setup_reference_available", {"track_id": 3, "lap_time_ms": 89500})
-    assert phrasing._canned_line(event) == "Got your best setup for this track on file, 89500 milliseconds."
+    assert phrasing._canned_line(event) == "Got your best setup for this track on file, 1:29.500."
 
 
 def test_canned_line_for_setup_hint_tyre_imbalance():
@@ -225,3 +225,32 @@ def test_answer_question_context_includes_previously_missing_fields(monkeypatch)
     assert "last penalty" in prompt
     assert "damage" in prompt
     assert "setup" in prompt
+
+
+def test_context_summary_expresses_gaps_in_seconds_not_milliseconds():
+    state = State(gap_ahead_ms=1200, gap_behind_ms=800, gap_to_leader_ms=4200)
+    summary = phrasing._context_summary(state)
+
+    assert "1.2 seconds" in summary
+    assert "0.8 seconds" in summary
+    assert "4.2 seconds" in summary
+    assert "ms" not in summary
+
+
+def test_canned_line_gap_events_use_seconds():
+    ahead = phrasing._canned_line(Event("gap_closing_ahead", {"gap_ms": 650}))
+    behind = phrasing._canned_line(Event("gap_closing_behind", {"gap_ms": 420}))
+    to_leader = phrasing._canned_line(Event("gap_to_leader", {"gap_to_leader_ms": 350}))
+
+    assert ahead == "Car ahead, gap closing, 0.65 seconds."
+    assert behind == "Car behind closing, 0.42 seconds."
+    assert to_leader == "Gap to pole, 0.35 seconds."
+
+
+def test_canned_line_lap_purple_uses_minutes_seconds_format():
+    event = Event("lap_purple", {"lap_time_ms": 88213})
+    assert phrasing._canned_line(event) == "Purple lap! New session best, 1:28.213."
+
+
+def test_fmt_lap_time_ms_handles_none():
+    assert phrasing._fmt_lap_time_ms(None) == "no time"
