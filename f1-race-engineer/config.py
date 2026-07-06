@@ -19,6 +19,8 @@ TTS_VOICE = "en-GB-RyanNeural"
 WAKE_WORD_NAME = "hey_jarvis"
 WHISPER_MODEL_SIZE = "base.en"
 
+LLM_PROVIDER_TIMEOUT_SECONDS = 5.0  # hard per-provider cutoff before falling through the chain
+
 VOICE_PERSONALITY = "calm"  # "calm" or "intense"
 PERSONALITY_TTS_VOICES = {
     "calm": "en-GB-RyanNeural",
