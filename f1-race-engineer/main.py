@@ -1,4 +1,5 @@
 import datetime
+import os
 import threading
 import time
 from telemetry.state import StateTracker
@@ -58,7 +59,10 @@ def run_telemetry_loop(state_tracker, rule_engine, engineer_log):
 
 def on_wake_word(state_tracker, engineer_log):
     wav_path = record_question()
-    question = transcribe(wav_path)
+    try:
+        question = transcribe(wav_path)
+    finally:
+        os.remove(wav_path)
     if not question:
         return
     state = state_tracker.snapshot()

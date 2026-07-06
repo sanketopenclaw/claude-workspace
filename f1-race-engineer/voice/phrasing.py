@@ -81,14 +81,20 @@ GROUNDING_GUARD = (
 # faster and more reliable than hoping the model polices itself.
 _SUSPICIOUS_PATTERNS = re.compile(
     r"ignore\b.{0,30}\binstructions"
+    r"|disregard\b.{0,30}\b(instructions|context|prompt)"
     r"|you are now (a|an)\b"
     r"|system\s*:"
     r"|reveal your (system )?prompt"
+    r"|quote your.{0,20}prompt"
     r"|print your instructions"
     r"|pretend (to be|you are)"
     r"|act as (a|an)\b"
     r"|roleplay"
-    r"|respond only in",
+    r"|respond only in"
+    r"|as an ai language model"
+    r"|what (model|llm) are you"
+    r"|admit (it|you're not)"
+    r"|forget you'?re\b",
     re.IGNORECASE,
 )
 INJECTION_DEFLECTION = "Stay on the radio, driver - let's focus on the race."
