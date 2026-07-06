@@ -1,11 +1,11 @@
-html, body { margin: 0; padding: 0; height: 100%; background: #0a0c0f; overflow: hidden; }
+html, body { margin: 0; padding: 0; height: 100%; background: #0a0c0f; overflow-y: auto; overflow-x: hidden; }
 * { box-sizing: border-box; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: #2a3038; border-radius: 3px; }
 @keyframes blip { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 
 .grid {
-  height: 100vh; width: 100vw; color: #e8edf2; font-family: 'Rajdhani', sans-serif;
+  min-height: 100vh; width: 100vw; color: #e8edf2; font-family: 'Rajdhani', sans-serif;
   display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; padding: 14px;
 }
 
