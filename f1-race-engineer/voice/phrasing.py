@@ -121,7 +121,10 @@ def _fmt_lap_time_ms(ms):
     return f"{minutes}:{seconds:06.3f}"
 
 
-def _canned_line(event):
+def _decorated_event_data(event):
+    """Decode raw numeric codes (flag=3, weather=4, ...) into the human-readable
+    values already used for canned lines - shared so the LLM prompt sees the same
+    grounded facts instead of guessing what a bare code means."""
     data = dict(event.data)
     if event.kind == "flag_change":
         data["flag_name"] = FLAG_NAMES.get(data.get("flag"), "flag")
@@ -144,6 +147,11 @@ def _canned_line(event):
         data["avg_lap_str"] = _fmt_lap_time_ms(data.get("avg_lap_ms"))
     elif event.kind == "setup_reference_available":
         data["lap_time_str"] = _fmt_lap_time_ms(data.get("lap_time_ms"))
+    return data
+
+
+def _canned_line(event):
+    data = _decorated_event_data(event)
     template = CANNED_LINES.get(event.kind, "Note: {kind}")
     try:
         return template.format(kind=event.kind, **data)
@@ -216,9 +224,14 @@ def _call_llm(prompt, max_tokens, provider_chain=None):
 
 
 def event_to_line(event):
+    facts = _decorated_event_data(event)
+    facts_str = facts if facts else "none beyond the event itself"
     prompt = (
-        f"{_personality_prompt()} {FORMAT_GUARD} "
-        f"React to this event in ONE short sentence, no filler: {event.kind} with data {event.data}."
+        f"{_personality_prompt()} {FORMAT_GUARD} {GROUNDING_GUARD} "
+        f"This is a radio callout reacting to a live event, not a question - never say you lack "
+        f"information; just state what's given in ONE short natural sentence, no filler. Use ONLY "
+        f"the exact facts and numbers given below, never invent a different number, name, or detail: "
+        f"{event.kind} - facts: {facts_str}."
     )
     result = _call_llm(prompt, max_tokens=60)
     return result if result else _canned_line(event)

@@ -536,3 +536,30 @@ def test_check_tyre_wear_imbalance_detects_front_and_rear():
     assert events_front_repeat == []  # same direction, no refire
     assert len(events_rear) == 1
     assert events_rear[0].data["direction"] == "rear"
+
+
+def test_check_flashback_resync_suppresses_bogus_lap_completion_after_rewind():
+    engine = RuleEngine()
+    lap5 = State(current_lap_num=5, last_lap_time_ms=91000, best_lap_time_ms=90500, fuel_in_tank=20.0)
+    engine.check_lap_completion(lap5)
+    lap_count_before = len(engine.get_lap_history())
+
+    # driver rewinds back to lap 3 - telemetry jumps backward, flashback event fires
+    rewound = State(current_lap_num=3, last_lap_time_ms=91000, best_lap_time_ms=90500,
+                     fuel_in_tank=25.0, last_flashback={"flashback_frame_identifier": 1})
+    resync_events = engine.check_flashback_resync(rewound)
+    lap_events = engine.check_lap_completion(rewound)
+
+    assert resync_events == []
+    assert lap_events == []  # no bogus lap_completion despite current_lap_num going 5 -> 3
+    assert len(engine.get_lap_history()) == lap_count_before  # no phantom lap appended
+
+    # same flashback dict seen again (repeat packet) - no-op, not a second resync
+    assert engine.check_flashback_resync(rewound) == []
+
+    # driver now genuinely completes lap 3 for real - this one SHOULD fire
+    lap4_again = State(current_lap_num=4, last_lap_time_ms=88000, best_lap_time_ms=88000, fuel_in_tank=18.0)
+    assert engine.check_flashback_resync(lap4_again) == []
+    real_events = engine.check_lap_completion(lap4_again)
+    assert len(real_events) == 1
+    assert real_events[0].kind == "lap_purple"

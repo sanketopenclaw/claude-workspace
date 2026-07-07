@@ -26,6 +26,7 @@ class State:
     last_collision: dict = None
     last_overtake: dict = None
     last_retirement: dict = None
+    last_flashback: dict = None
     flag_status: int = None
     player_car_index: int = None
     damage_components: dict = dataclasses.field(default_factory=dict)
@@ -145,6 +146,7 @@ class StateTracker:
         "OVTK": "last_overtake",
         "RTMT": "last_retirement",
         "SPTP": "last_speed_trap",
+        "FLBK": "last_flashback",
     }
 
     def update_event(self, event_code, details):

@@ -43,6 +43,7 @@ class RuleEngine:
         self._fired_pit_window_ideal = False
         self._fired_pit_window_latest = False
         self._last_retirement_seen = None
+        self._last_flashback_seen = None
         self._current_lap_reference = {}
         self._best_lap_reference = {}
         self._coaching_fired_buckets = set()
@@ -51,6 +52,28 @@ class RuleEngine:
         self._debrief_fired = False
         self._last_track_id_seen_for_setup = None
         self._fired_tyre_imbalance_direction = None
+
+    def check_flashback_resync(self, state):
+        # F1 25's rewind/flashback snaps lap_num, fuel, gaps etc back to an
+        # earlier value. The diff-based checks below (lap completion, tyre-wear
+        # thresholds, gap alerts, fuel burn) only compare against "last seen" -
+        # they can't tell a rewind from a real backwards-moving bug, so without
+        # this they'd fire a bogus lap_completion (corrupting lap history/debrief)
+        # the moment telemetry jumps back. Call this FIRST each tick, before any
+        # other check, so a detected flashback resyncs trackers to the
+        # post-rewind snapshot before those diffs run - no callout, since a
+        # flashback is the driver's own action and has nothing to tell them.
+        fb = state.last_flashback
+        if fb is None or fb == self._last_flashback_seen:
+            return []
+        self._last_flashback_seen = fb
+        self._last_lap_num_seen = state.current_lap_num
+        self._prev_best_lap_time_ms = state.best_lap_time_ms
+        self._last_gap_ahead_alert_lap = state.current_lap_num
+        self._last_gap_behind_alert_lap = state.current_lap_num
+        self._fuel_lap_tracker_lap_num = state.current_lap_num
+        self._fuel_lap_tracker_fuel = state.fuel_in_tank
+        return []
 
     def check_lap_completion(self, state):
         events = []
